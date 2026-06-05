@@ -1,0 +1,14 @@
+validation_rules:
+  - id: VR-001
+    field: email
+    rule: required
+    message: Email is required and must be a valid email address.
+  - id: VR-002
+    field: password
+    rule: required
+    message: Password is required and must be at least 8 characters.
+  - id: VR-003
+    field: age
+    rule: minimum
+    value: 18
+    message: Age must be 18 or older.

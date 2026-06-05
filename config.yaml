@@ -1,0 +1,8 @@
+inputs:
+  markdown:
+    - examples/user-story.md
+  openapi:
+    - examples/api-spec.yaml
+  validation_rules:
+    - examples/validation-rules.yaml
+output: output

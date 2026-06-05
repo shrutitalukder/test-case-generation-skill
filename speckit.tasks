@@ -1,0 +1,1218 @@
+AI-Powered Test Case Generation Skill — Implementation Tasks (Phase 1 MVP)
+
+Version: 1.0
+Date: 2026-06-04
+Status: Ready for Implementation
+
+==============================================================================
+MVP RULE: OPTIONAL OPENAPI SUPPORT
+==============================================================================
+
+OpenAPI Support (CONDITIONAL):
+  - OpenAPI input is OPTIONAL.
+  - System must work with only User Stories and Acceptance Criteria.
+  - If OpenAPI is provided → generate API Contract Tests (and API coverage metrics).
+  - If OpenAPI is absent → skip API Contract Analyzer and Contract Test Generation.
+  - Generate Functional Tests, Validation Tests, Boundary Tests, Gherkin, Playwright,
+    Traceability Matrix, and Coverage Reports regardless of OpenAPI availability.
+  - Manifest includes `openApiIncluded: boolean` flag.
+  - Coverage report adapts based on whether OpenAPI was processed.
+
+==============================================================================
+TASK EXECUTION ORDER & DEPENDENCIES
+==============================================================================
+
+Execution sequence (critical path):
+  Week 1: CORE-001 → CORE-006 (foundation)
+  Week 2: REQ-001 → REQ-005 (REQUIRED); API-001 → API-005 (OPTIONAL, parallel)
+  Week 3: DESIGN-001 → DESIGN-006, DATA-001 → DATA-005 (generation)
+  Week 4: GHERKIN-001 → GHERKIN-005, PLAYWRIGHT-001 → PLAYWRIGHT-005 (adapters, parallel),
+          TRACE-001, COVERAGE-001, ASSEMBLE-001, ASSEMBLE-002 (assembly)
+
+Dependency graph:
+  CORE-* ────────┬──→ REQ-* (REQUIRED) ──┬──→ DESIGN-* ──→ DATA-* ──┬──→ GHERKIN-*
+                 │                       │  (optional API input)    │
+                 ├──→ API-* (OPTIONAL) ──┘                          ├──→ PLAYWRIGHT-*
+                 │                                                   │
+                 └──────────────────────────────────────────────────┼──→ TRACE-*
+                                                                     │
+                                                                     └──→ COVERAGE-*
+                                                                          ASSEMBLE-*
+
+==============================================================================
+WEEK 1: CORE INFRASTRUCTURE
+==============================================================================
+
+CORE-001: Implement core data model (dataclasses)
+  Type: Implementation
+  Description:
+    Create Python dataclasses for all core types used throughout the generator.
+    Focus on immutability and clear field definitions with type hints.
+  
+  Subtasks:
+    1.1 Create src/core/model.py with:
+        - Requirement (id, text, type, actor, source, business_rules, etc.)
+        - ApiSpec (source, title, endpoints)
+        - Endpoint (path, method, summary, request, responses)
+        - RequestSchema (required, schema)
+        - Response (status, description, schema)
+        - JsonSchema (type, format, properties, required, constraints)
+        - Constraint (field, type, rules)
+        - TestCase (id, sourceIds, description, intent, type, request_example, etc.)
+        - Fixture (test_case_id, request_payload, expected_response, headers)
+        - TraceabilityRecord (requirement_id, test_case_id, artifact_path, rationale)
+        - CoverageReport (metrics)
+        - GenerationManifest (version, timestamp, seed, sources, test_cases, artifacts)
+    1.2 Verify all type hints are correct
+    1.3 Add __repr__ methods for debugging
+  
+  Dependencies: None
+  Acceptance Criteria:
+    ✓ All 12+ dataclasses defined with correct fields and types
+    ✓ Imports work without external dependencies (stdlib only)
+    ✓ Model can be instantiated and serialized to/from JSON
+  
+  Estimated Effort: 2 hours
+  Priority: P0 (blocker)
+
+---
+
+CORE-002: Implement canonicalization & deterministic hashing
+  Type: Implementation
+  Description:
+    Build deterministic SHA256-based canonicalization for sources.
+    Ensure identical inputs always produce identical hashes.
+  
+  Subtasks:
+    2.1 Create src/core/canonicalize.py with:
+        - canonicalize_json(dict) → str (sorted keys, stable format)
+        - canonicalize_text(str) → str (strip whitespace, normalize line endings)
+        - compute_checksum(content) → str (SHA256 hex)
+        - compute_deterministic_seed(sources: Dict[str, str]) → str
+    2.2 Add tests for edge cases (empty dict, unicode, special chars)
+    2.3 Verify determinism: run same function 100x, same hash
+  
+  Dependencies: CORE-001
+  Acceptance Criteria:
+    ✓ Canonicalization is deterministic (identical output for identical input)
+    ✓ Checksum function produces valid SHA256 hex strings
+    ✓ Seed changes when any source file changes
+    ✓ Seed remains stable when run order changes (content-based, not order-based)
+  
+  Estimated Effort: 3 hours
+  Priority: P0 (blocker)
+
+---
+
+CORE-003: Implement simple YAML/JSON loader (no external deps)
+  Type: Implementation
+  Description:
+    Create a minimal YAML parser using only stdlib.
+    Must parse OpenAPI specs, validation rules, and config files.
+    Already partially implemented in speckit_generator.py; refactor into src/core/
+  
+  Subtasks:
+    3.1 Create src/core/loaders.py with:
+        - _parse_scalar(value: str) → Any (string, int, float, bool, list)
+        - _build_container_stack(lines: List[str]) → Dict (YAML parsing)
+        - load_yaml_or_json(path: Path) → Dict (auto-detect format)
+    3.2 Test against:
+        - config.yaml
+        - examples/api-spec.yaml
+        - examples/validation-rules.yaml
+    3.3 Handle edge cases:
+        - quoted strings ("key": "value")
+        - nested lists and dicts
+        - comments and blank lines
+  
+  Dependencies: CORE-001
+  Acceptance Criteria:
+    ✓ Parses valid YAML/JSON without external libs
+    ✓ Handles quoted keys/values correctly
+    ✓ Produces valid Python dicts (no dangling references)
+    ✓ All sample files parse correctly
+    ✓ Error handling for malformed input
+  
+  Estimated Effort: 2 hours
+  Priority: P0 (blocker)
+
+---
+
+CORE-004: Create project directory structure
+  Type: Task
+  Description:
+    Set up the recommended src/, tests/, examples/ folders.
+    Move existing files (speckit_generator.py, run_generation.py, examples/) to correct locations.
+  
+  Subtasks:
+    4.1 Create directories:
+        mkdir -p src/core src/parsers src/generators src/adapters src/utils
+        mkdir -p tests/unit tests/integration tests/fixtures
+    4.2 Move existing code to src/
+    4.3 Create __init__.py files for all packages
+    4.4 Update imports in run_generation.py
+  
+  Dependencies: None (can be done anytime)
+  Acceptance Criteria:
+    ✓ Directory structure matches plan
+    ✓ All __init__.py files created
+    ✓ run_generation.py imports work correctly
+    ✓ No circular imports
+  
+  Estimated Effort: 1 hour
+  Priority: P0
+
+---
+
+CORE-005: Implement manifest generation & validation
+  Type: Implementation
+  Description:
+    Build manifest.json generation and validation logic.
+    Manifest tracks determinism, source checksums, and artifact paths.
+  
+  Subtasks:
+    5.1 Create src/core/manifest.py with:
+        - build_manifest(sources: Dict, test_cases: List, artifacts: List) → GenerationManifest
+        - validate_manifest(manifest) → bool (all required fields present)
+        - validate_checksums(manifest, actual_files) → List[str] (mismatches)
+    5.2 Manifest must include:
+        - generator_version (e.g., "0.1.0")
+        - generated_at (ISO 8601 timestamp)
+        - deterministic_seed (SHA256 of sources)
+        - sources: { path, checksum }[]
+        - test_cases: { id, source_ids, checksum }[]
+        - artifacts: { path, type, checksum }[]
+  
+  Dependencies: CORE-001, CORE-002
+  Acceptance Criteria:
+    ✓ Manifest is valid JSON when serialized
+    ✓ Deterministic seed matches input sources
+    ✓ All source/artifact paths are relative or absolute (consistent)
+    ✓ Validation catches missing required fields
+    ✓ Checksum validation detects file tampering
+  
+  Estimated Effort: 2 hours
+  Priority: P0
+
+---
+
+CORE-006: Write core infrastructure unit tests
+  Type: Test
+  Description:
+    Unit tests for CORE-001 through CORE-005.
+  
+  Test Files:
+    - tests/unit/test_model.py (dataclass instantiation, serialization)
+    - tests/unit/test_canonicalize.py (determinism, edge cases)
+    - tests/unit/test_loaders.py (YAML/JSON parsing)
+    - tests/unit/test_manifest.py (manifest generation, validation)
+  
+  Coverage Target: > 90%
+  Dependencies: CORE-001 through CORE-005
+  Acceptance Criteria:
+    ✓ All core modules have unit tests
+    ✓ 90%+ line coverage
+    ✓ Determinism tests pass (100 runs → identical output)
+    ✓ Edge cases covered (empty input, unicode, special chars)
+  
+  Estimated Effort: 4 hours
+  Priority: P1
+
+---
+
+==============================================================================
+WEEK 2: PARSERS
+==============================================================================
+
+REQ-001: Implement Requirement Analyzer (markdown parser)
+  Type: Implementation
+  Description:
+    Parse markdown user stories and extract acceptance criteria.
+    Format: "As a <actor>, I want <action>, so <benefit>."
+            "## Acceptance Criteria
+             - AC-NNN: <criterion>"
+  
+  Subtasks:
+    1.1 Create src/parsers/markdown.py with:
+        - parse_markdown_story(path: Path) → Requirement[]
+        - extract_actor(text: str) → str (regex: "As a ([^,]+)")
+        - extract_acceptance_criteria(text: str) → Requirement[]
+        - extract_business_rules(text: str) → str[]
+        - extract_preconditions(text: str) → str[]
+        - extract_postconditions(text: str) → str[]
+        - normalize_requirement_id(text: str) → str (AC-001 or generate REQ-HASH)
+    1.2 Parsing rules:
+        - Recognize "## Acceptance Criteria" section
+        - Parse "- AC-NNN: <text>" or "- <text>"
+        - Extract actor from "As a <actor>" pattern
+        - Detect business rules ("must", "should", "only", "requires")
+        - Detect preconditions ("Given", "when", "if")
+        - Detect postconditions ("Then", "should", "result", "returns")
+  
+  Dependencies: CORE-001, CORE-003
+  Acceptance Criteria:
+    ✓ Parses examples/user-story.md correctly
+    ✓ Extracts all 4 acceptance criteria
+    ✓ Identifies actor as "registered user"
+    ✓ Handles IDs (AC-001, AC-002, etc.)
+    ✓ Generates REQ-HASH for missing IDs
+    ✓ Returns Requirement[] with all fields populated
+  
+  Estimated Effort: 3 hours
+  Priority: P0
+
+---
+
+REQ-002: Implement API Contract Analyzer (OpenAPI parser)
+  Type: Implementation
+  Description:
+    Parse OpenAPI 3.x specs and extract endpoints, schemas, constraints.
+    Handle $ref dereferencing, extract field constraints from JSON Schema.
+  
+  Subtasks:
+    2.1 Create src/parsers/openapi.py with:
+        - parse_openapi(path: Path) → ApiSpec
+        - extract_endpoints(spec: Dict) → Endpoint[]
+        - dereference_schema(schema: Dict, spec: Dict) → Dict (resolve $ref)
+        - extract_field_constraints(schema: Dict) → Constraint[]
+        - normalize_status_code(code: str) → int
+    2.2 Extract from OpenAPI:
+        - Info: title, version
+        - Paths: path, method (GET, POST, PUT, PATCH, DELETE)
+        - RequestBody: required, schema, content-type
+        - Responses: status code, description, schema, content-type
+    2.3 Constraint extraction from JsonSchema:
+        - type, format, minLength, maxLength, minimum, maximum, enum, pattern
+        - required array (list of required field names)
+    2.4 Handle:
+        - Simple schemas (inline)
+        - Referenced schemas ($ref)
+        - Nested objects and arrays
+        - AllOf, anyOf, oneOf (log as TODO)
+  
+  Dependencies: CORE-001, CORE-003
+  Acceptance Criteria:
+    ✓ Parses examples/api-spec.yaml correctly
+    ✓ Extracts 1 endpoint (POST /api/users)
+    ✓ Extracts request schema with 3 properties (email, password, age)
+    ✓ Extracts 3 responses (201, 400, 409)
+    ✓ Extracts constraints: email format, password minLength, age minimum
+    ✓ Dereferences $ref (if present in test fixture)
+    ✓ Returns ApiSpec with all fields populated
+  
+  Estimated Effort: 4 hours
+  Priority: P0
+
+---
+
+REQ-003: Implement Validation Rule Analyzer
+  Type: Implementation
+  Description:
+    Parse validation rules from YAML (custom format).
+    Map field constraints and validation messages.
+  
+  Subtasks:
+    3.1 Create src/parsers/validation.py with:
+        - parse_validation_rules(path: Path) → Constraint[]
+        - extract_rules(data: Dict) → Constraint[]
+        - normalize_rule(rule: Dict) → Constraint
+    3.2 Input format:
+        validation_rules:
+          - id: VR-001
+            field: email
+            rule: required
+            message: Email is required...
+          - id: VR-002
+            field: password
+            rule: required
+            ...
+    3.3 Output: Constraint[] with field, type, rules dict
+  
+  Dependencies: CORE-001, CORE-003
+  Acceptance Criteria:
+    ✓ Parses examples/validation-rules.yaml correctly
+    ✓ Extracts 3 rules (email required, password required, age minimum)
+    ✓ Maps field names correctly
+    ✓ Populates Constraint[] with all required fields
+  
+  Estimated Effort: 2 hours
+  Priority: P1
+
+---
+
+REQ-004: Create base Parser interface & registry
+  Type: Implementation
+  Description:
+    Abstract base class for all parsers.
+    Simple registry to load parsers by format.
+  
+  Subtasks:
+    4.1 Create src/parsers/base.py with:
+        - class Parser(ABC) with abstract parse(path) method
+        - register_parser(format: str, parser_class)
+        - get_parser(format: str) → Parser
+    4.2 Register:
+        - MarkdownParser for .md
+        - OpenApiParser for .yaml, .json (with auto-detect based on content)
+        - ValidationParser for validation rules
+  
+  Dependencies: REQ-001, REQ-002, REQ-003
+  Acceptance Criteria:
+    ✓ Base class is abstract
+    ✓ All parsers inherit from base
+    ✓ Registry works (register then get)
+    ✓ Can auto-detect format from file extension
+  
+  Estimated Effort: 1.5 hours
+  Priority: P1
+
+---
+
+REQ-005: Write parser unit tests
+  Type: Test
+  Description:
+    Unit tests for all parsers.
+  
+  Test Files:
+    - tests/unit/test_markdown_parser.py
+    - tests/unit/test_openapi_parser.py
+    - tests/unit/test_validation_parser.py
+    - tests/unit/test_parser_registry.py
+  
+  Coverage Target: > 90%
+  Test Fixtures:
+    - tests/fixtures/sample_user_story.md
+    - tests/fixtures/sample_openapi.yaml
+    - tests/fixtures/sample_openapi_with_refs.yaml
+    - tests/fixtures/sample_validation_rules.yaml
+    - tests/fixtures/invalid_openapi.yaml (error handling)
+  
+  Dependencies: REQ-001 through REQ-004
+  Acceptance Criteria:
+    ✓ All parsers have unit tests
+    ✓ 90%+ coverage
+    ✓ Valid inputs parse correctly
+    ✓ Invalid inputs logged as errors or stubs (no crashes)
+    ✓ Edge cases: empty files, malformed, missing sections
+  
+  Estimated Effort: 4 hours
+  Priority: P1
+
+---
+
+API-001: Implement API Contract Analyzer (OpenAPI parser) [OPTIONAL COMPONENT]
+  Type: Implementation
+  Description:
+    Parse OpenAPI 3.x specs and extract endpoints, schemas, constraints.
+    Handle $ref dereferencing, extract field constraints from JSON Schema.
+    
+    STATUS: OPTIONAL — Task runs only if config specifies openapi_path and file exists.
+            Graceful handling if OpenAPI not provided (continues with non-API tests).
+  
+  Subtasks:
+    1.1 Create src/parsers/openapi.py with:
+        - parse_openapi(path: Path | None) → ApiSpec | None
+        - extract_endpoints(spec: Dict) → Endpoint[]
+        - dereference_schema(schema: Dict, spec: Dict) → Dict (resolve $ref)
+        - extract_field_constraints(schema: Dict) → Constraint[]
+        - normalize_status_code(code: str) → int
+    1.2 Extract from OpenAPI:
+        - Info: title, version
+        - Paths: path, method (GET, POST, PUT, PATCH, DELETE)
+        - RequestBody: required, schema, content-type
+        - Responses: status code, description, schema, content-type
+    1.3 Constraint extraction from JsonSchema:
+        - type, format, minLength, maxLength, minimum, maximum, enum, pattern
+        - required array (list of required field names)
+    1.4 Handle:
+        - Simple schemas (inline)
+        - Referenced schemas ($ref)
+        - Nested objects and arrays
+        - AllOf, anyOf, oneOf (log as TODO)
+  
+  Dependencies: CORE-001, CORE-003
+  Acceptance Criteria:
+    ✓ Parses examples/api-spec.yaml correctly (when provided)
+    ✓ Extracts 1 endpoint (POST /api/users)
+    ✓ Extracts request schema with 3 properties (email, password, age)
+    ✓ Extracts 3 responses (201, 400, 409)
+    ✓ Extracts constraints: email format, password minLength, age minimum
+    ✓ Dereferences $ref (if present in test fixture)
+    ✓ Returns ApiSpec with all fields populated
+    ✓ [CONDITIONAL] Gracefully returns None if openapi_path is missing or file not found
+    ✓ No exception thrown if OpenAPI component is disabled in config
+  
+  Estimated Effort: 4 hours
+  Priority: P1 (optional track)
+
+---
+
+API-002: Implement Validation Rule Analyzer [OPTIONAL COMPONENT - runs with or without OpenAPI]
+  Type: Implementation
+  Description:
+    Parse validation rules from YAML (custom format).
+    Map field constraints and validation messages.
+    NOTE: This runs regardless of OpenAPI availability; it parses standalone validation rules.
+  
+  Subtasks:
+    2.1 Create src/parsers/validation.py with:
+        - parse_validation_rules(path: Path | None) → Constraint[]
+        - extract_rules(data: Dict) → Constraint[]
+        - normalize_rule(rule: Dict) → Constraint
+    2.2 Input format:
+        validation_rules:
+          - id: VR-001
+            field: email
+            rule: required
+            message: Email is required...
+    2.3 Output: Constraint[] with field, type, rules dict
+  
+  Dependencies: CORE-001, CORE-003
+  Acceptance Criteria:
+    ✓ Parses examples/validation-rules.yaml correctly (when provided)
+    ✓ Extracts 3 rules (email required, password required, age minimum)
+    ✓ Maps field names correctly
+    ✓ Populates Constraint[] with all required fields
+    ✓ Gracefully returns empty list if validation_rules file not provided
+  
+  Estimated Effort: 2 hours
+  Priority: P2 (optional track)
+
+---
+
+API-003: Create base Parser interface & registry [REQUIRED]
+  Type: Implementation
+  Description:
+    Abstract base class for all parsers.
+    Simple registry to load parsers by format.
+  
+  Subtasks:
+    3.1 Create src/parsers/base.py with:
+        - class Parser(ABC) with abstract parse(path) method
+        - register_parser(format: str, parser_class)
+        - get_parser(format: str) → Parser
+    3.2 Register:
+        - MarkdownParser for .md (REQUIRED)
+        - OpenApiParser for .yaml, .json (OPTIONAL, graceful if missing)
+        - ValidationParser for validation rules (OPTIONAL, graceful if missing)
+  
+  Dependencies: REQ-001, API-001, API-002
+  Acceptance Criteria:
+    ✓ Base class is abstract
+    ✓ All parsers inherit from base
+    ✓ Registry works (register then get)
+    ✓ Can auto-detect format from file extension
+    ✓ Gracefully handles optional parsers (returns None if disabled)
+  
+  Estimated Effort: 1.5 hours
+  Priority: P0
+
+---
+
+API-004: Write API/Validation parser unit tests [OPTIONAL TRACK]
+  Type: Test
+  Description:
+    Unit tests for optional parsers (OpenAPI and Validation Rules).
+  
+  Test Files:
+    - tests/unit/test_openapi_parser.py
+    - tests/unit/test_validation_parser.py
+  
+  Coverage Target: > 90%
+  Dependencies: API-001, API-002, API-003
+  Acceptance Criteria:
+    ✓ All optional parsers have unit tests
+    ✓ 90%+ coverage
+    ✓ Valid inputs parse correctly
+    ✓ Missing files return None gracefully (no crashes)
+    ✓ Invalid inputs logged as warnings
+  
+  Estimated Effort: 3 hours
+  Priority: P2 (optional track)
+
+---
+
+==============================================================================
+WEEK 3: GENERATORS (CORE)
+==============================================================================
+
+DESIGN-001: Implement Test Design Generator
+  Type: Implementation
+  Description:
+    Generate test cases from requirements, optional API specs, and constraints.
+    For each acceptance criterion: 1 positive, 1 negative, 1 boundary test.
+    For each constraint: 1 validation test.
+    [CONDITIONAL] For each response code (if OpenAPI provided): 1 contract test.
+  
+  Subtasks:
+    1.1 Create src/generators/test_design.py with:
+        - generate_test_cases(requirements, [optional] api_spec, constraints) → TestCase[]
+        - generate_positive_test(requirement, [optional] endpoint) → TestCase
+        - generate_negative_test(requirement, constraint) → TestCase
+        - generate_boundary_test(requirement, constraint) → TestCase
+        - generate_validation_test(constraint, [optional] endpoint) → TestCase
+        - generate_contract_test(endpoint, response) → TestCase [CONDITIONAL]
+        - deduplicate_tests(tests) → TestCase[] (normalized key hash)
+    1.2 Test case ID format: TC-<REQ-ID>-<INTENT>
+        - TC-AC-001-POS (positive) [ALWAYS]
+        - TC-AC-001-NEG (negative) [ALWAYS]
+        - TC-AC-001-BOUNDARY (boundary) [ALWAYS]
+        - TC-VR-001-VALIDATION (validation) [ALWAYS]
+        - TC-<HASH>-CONTRACT (contract) [CONDITIONAL: only if OpenAPI provided]
+    1.3 For each test:
+        - Assign sourceIds[] (which requirements it covers)
+        - Write rationale (why this test matters)
+        - Assign intent (positive, negative, boundary, validation, contract[optional])
+        - Assign type (functional, validation, api[optional], boundary)
+        - Include tags[] for filtering
+    1.4 Handle missing OpenAPI:
+        - If api_spec is None: skip contract test generation
+        - Still generate validation tests from acceptance criteria constraints
+        - Include note in test rationale if contract test would have been generated
+  
+  Dependencies: CORE-001, REQ-001, API-001 (optional)
+  Acceptance Criteria:
+    ✓ Generates 3 tests per acceptance criterion (POS, NEG, BOUNDARY) [ALWAYS]
+    ✓ Generates 1 test per constraint [ALWAYS]
+    ✓ [CONDITIONAL] Generates 1 test per response code (if OpenAPI provided)
+    ✓ [CONDITIONAL] Skips contract tests gracefully if OpenAPI is None
+    ✓ Test IDs are unique and deterministic
+    ✓ Each test has sourceIds and rationale
+    ✓ Duplicate detection works (hash-based)
+    ✓ Sample input with OpenAPI (4 ACs, 1 endpoint, 3 constraints) produces ~15 tests
+    ✓ Sample input without OpenAPI (4 ACs, 3 constraints) produces ~12 tests (no contracts)
+  
+  Estimated Effort: 5 hours
+  Priority: P0
+
+---
+
+DESIGN-002: Create base Generator interface
+  Type: Implementation
+  Description:
+    Abstract class for all generators.
+  
+  Subtasks:
+    2.1 Create src/generators/base.py with:
+        - class Generator(ABC) with abstract generate() method
+    2.2 Inheritance hierarchy:
+        - Generator → TestDesignGenerator
+                  → TestDataGenerator
+                  → TraceabilityMatrixGenerator
+                  → CoverageReportGenerator
+  
+  Dependencies: CORE-001
+  Acceptance Criteria:
+    ✓ Base class is abstract
+    ✓ All generators inherit from base
+    ✓ Consistent interface
+  
+  Estimated Effort: 1 hour
+  Priority: P1
+
+---
+
+DESIGN-003: Write Test Design Generator unit tests
+  Type: Test
+  Description:
+    Comprehensive unit tests for test case generation.
+  
+  Test Coverage:
+    - Generate positive/negative/boundary tests
+    - Test ID assignment and uniqueness
+    - Deduplication logic
+    - Traceability (sourceIds, rationale)
+    - Edge cases (1 criterion, 0 constraints, multiple endpoints)
+  
+  Dependencies: DESIGN-001, DESIGN-002
+  Acceptance Criteria:
+    ✓ 90%+ coverage
+    ✓ All test types generated correctly
+    ✓ Deduplication removes exact duplicates
+    ✓ Test IDs deterministic (same input → same ID)
+  
+  Estimated Effort: 3 hours
+  Priority: P1
+
+---
+
+DATA-001: Implement Test Data Generator (mock data)
+  Type: Implementation
+  Description:
+    Generate constraint-driven mock payloads for test cases.
+    For positive tests: valid data.
+    For negative tests: violate one constraint.
+    For boundary tests: edge values.
+  
+  Subtasks:
+    1.1 Create src/generators/test_data.py with:
+        - generate_mock_payload(schema, intent, seed) → Dict
+        - generate_mock_value(field_def, constraint, intent, seed) → Any
+        - generate_fixtures(test_cases, seed) → Fixture[]
+    1.2 Constraint-driven generation:
+        - string: use format (email, uuid), minLength, maxLength, pattern, enum
+        - integer: use minimum, maximum, enum
+        - boolean: true/false
+        - array: empty or 1-2 items
+        - object: recursive descent
+    1.3 Deterministic PRNG:
+        - Seed from deterministicSeed (manifest)
+        - Same seed → identical mock values
+        - Different seeds → different values
+    1.4 Intent-based behavior:
+        - positive: satisfy all constraints
+        - negative: violate exactly one constraint
+        - boundary: use min-1, max+1, empty string, etc.
+  
+  Dependencies: CORE-001, CORE-002, DESIGN-001
+  Acceptance Criteria:
+    ✓ Generates valid positive payloads (match all constraints)
+    ✓ Generates invalid negative payloads (violate one constraint)
+    ✓ Generates boundary payloads (edge values)
+    ✓ Deterministic PRNG: same seed → identical values
+    ✓ Handles email format, minLength, minimum, enum correctly
+    ✓ Fixtures include request, expected_response (if available), headers
+  
+  Estimated Effort: 5 hours
+  Priority: P0
+
+---
+
+DATA-002: Write Test Data Generator unit tests
+  Type: Test
+  Description:
+    Unit tests for mock data generation.
+  
+  Test Coverage:
+    - Constraint satisfaction (positive tests)
+    - Constraint violation (negative tests)
+    - Boundary conditions
+    - Determinism (seed-based)
+    - Type handling (string, int, bool, object, array)
+    - Format support (email, uuid, date, etc.)
+  
+  Dependencies: DATA-001
+  Acceptance Criteria:
+    ✓ 90%+ coverage
+    ✓ Positive payloads validate against schema
+    ✓ Negative payloads fail schema validation (exactly 1 constraint)
+    ✓ Boundary payloads trigger edge conditions
+    ✓ Same seed produces identical payloads (100x runs)
+  
+  Estimated Effort: 4 hours
+  Priority: P1
+
+---
+
+DATA-003: Write integration test (DESIGN → DATA flow)
+  Type: Integration Test
+  Description:
+    Test that test cases + mock data work together.
+  
+  Test Scenarios:
+    - E2E: requirement → test case → payload generation
+    - All generated payloads match their test case intent
+    - Determinism: run twice, same payloads
+  
+  Dependencies: DESIGN-001 through DATA-002
+  Acceptance Criteria:
+    ✓ Full flow executes without errors
+    ✓ Generated payloads match test case intent (positive valid, negative invalid)
+    ✓ Payloads are deterministic
+  
+  Estimated Effort: 2 hours
+  Priority: P2
+
+---
+
+==============================================================================
+WEEK 4: ADAPTERS & ASSEMBLY
+==============================================================================
+
+GHERKIN-001: Implement Gherkin Generator
+  Type: Implementation
+  Description:
+    Render Gherkin scenarios from test cases.
+    Format: Feature, Scenario, Given/When/Then steps.
+  
+  Subtasks:
+    1.1 Create src/adapters/gherkin.py with:
+        - render_gherkin(test_cases, output_dir) → None
+        - generate_scenario(test_case) → str
+        - generate_given_steps(test_case) → str[]
+        - generate_when_steps(test_case) → str[]
+        - generate_then_steps(test_case) → str[]
+    1.2 Template structure:
+        Feature: Generated acceptance and API tests
+          @positive
+          Scenario: TC-AC-001-POS - Positive test for '...'
+            Given a user has a positive payload
+            When the client submits a POST request to /api/users
+            Then the response status should be 201
+            And the response body should match the expected schema
+    1.3 Generate:
+        - Feature file with all scenarios
+        - Tags for intent (@positive, @negative, @boundary, @contract)
+        - Deterministic order (sorted by test case ID)
+  
+  Dependencies: CORE-001, DESIGN-001, DATA-001
+  Acceptance Criteria:
+    ✓ Generates valid Gherkin syntax (can parse with gherkin-parser)
+    ✓ All test cases rendered as scenarios
+    ✓ Correct Given/When/Then structure
+    ✓ Tags included (@positive, @negative, etc.)
+    ✓ Output file: gherkin/generated_tests.feature
+    ✓ Deterministic (same seed → identical feature file)
+  
+  Estimated Effort: 3 hours
+  Priority: P0
+
+---
+
+GHERKIN-002: Write Gherkin Generator unit tests
+  Type: Test
+  Description:
+    Unit tests for Gherkin rendering.
+  
+  Test Coverage:
+    - Scenario generation
+    - Step generation (Given/When/Then)
+    - Tag generation
+    - Deterministic output
+    - Edge cases (empty test cases, special characters in names)
+  
+  Dependencies: GHERKIN-001
+  Acceptance Criteria:
+    ✓ 90%+ coverage
+    ✓ Generated Gherkin is syntactically valid
+    ✓ All scenarios render correctly
+    ✓ Deterministic (same input → same feature file)
+  
+  Estimated Effort: 2 hours
+  Priority: P1
+
+---
+
+PLAYWRIGHT-001: Implement Playwright Generator
+  Type: Implementation
+  Description:
+    Render TypeScript Playwright test skeletons.
+    Include HTTP request/response, assertions (with TODOs).
+  
+  Subtasks:
+    1.1 Create src/adapters/playwright.py with:
+        - render_playwright(test_cases, output_dir) → None
+        - generate_test_function(test_case) → str
+        - generate_request_block(test_case) → str
+        - generate_assertion_block(test_case) → str
+        - generate_fixture_import(test_case) → str
+    1.2 Template structure:
+        import { test, expect } from '@playwright/test';
+        
+        test('TC-AC-001-POS - Positive test', async ({ request }) => {
+          const payload = { email: "user@example.com", password: "Password123", age: 18 };
+          const response = await request.post('/api/users', { data: payload });
+          expect(response.status()).toBe(201);
+          const body = await response.json();
+          expect(body).toBeTruthy();
+          // TODO: add field-level assertions and response schema validation
+        });
+    1.3 Generate:
+        - One .spec.ts file per test case or all in one (configurable)
+        - Deterministic file naming: TC-<ID>.spec.ts
+        - Include fixture references
+        - TODO comments for manual completion
+  
+  Dependencies: CORE-001, DESIGN-001, DATA-001
+  Acceptance Criteria:
+    ✓ Generates valid TypeScript syntax (can compile with tsc)
+    ✓ All test cases rendered as test() blocks
+    ✓ Correct HTTP method, endpoint, headers
+    ✓ Payload matches mock data generated
+    ✓ Assertions include status code + TODO for schema
+    ✓ Output files: playwright/*.spec.ts
+    ✓ Deterministic (same seed → identical TS files)
+  
+  Estimated Effort: 4 hours
+  Priority: P0
+
+---
+
+PLAYWRIGHT-002: Write Playwright Generator unit tests
+  Type: Test
+  Description:
+    Unit tests for Playwright code generation.
+  
+  Test Coverage:
+    - Test function generation
+    - Request/response blocks
+    - Assertion generation
+    - TypeScript syntax validity
+    - Deterministic output
+  
+  Dependencies: PLAYWRIGHT-001
+  Acceptance Criteria:
+    ✓ 90%+ coverage
+    ✓ Generated TypeScript is valid (can compile)
+    ✓ HTTP methods, endpoints, payloads correct
+    ✓ Assertions include status code
+    ✓ Deterministic (same input → same TS file)
+  
+  Estimated Effort: 3 hours
+  Priority: P1
+
+---
+
+TRACE-001: Implement Traceability Matrix Generator
+  Type: Implementation
+  Description:
+    Build mapping from requirements → test cases → artifacts.
+  
+  Subtasks:
+    1.1 Create src/generators/traceability.py with:
+        - build_traceability_matrix(test_cases, requirements) → TraceabilityRecord[]
+        - export_json(matrix, path) → None
+        - export_csv(matrix, path) → None
+    1.2 Record schema:
+        requirement_id, requirement_text, test_case_id, test_intent,
+        artifact_path (e.g., playwright/TC-AC-001-POS.spec.ts), rationale
+    1.3 Output:
+        - traceability_matrix.json (for tooling)
+        - traceability_matrix.csv (for humans)
+  
+  Dependencies: CORE-001, DESIGN-001, GHERKIN-001, PLAYWRIGHT-001
+  Acceptance Criteria:
+    ✓ All test cases appear in matrix
+    ✓ Each test case maps to at least 1 requirement
+    ✓ CSV is readable (correct headers, proper escaping)
+    ✓ JSON is valid and parseable
+    ✓ Artifact paths are correct
+  
+  Estimated Effort: 2 hours
+  Priority: P0
+
+---
+
+TRACE-002: Write Traceability Matrix Generator unit tests
+  Type: Test
+  Description:
+    Unit tests for traceability generation.
+  
+  Test Coverage:
+    - Matrix building
+    - JSON export
+    - CSV export (proper escaping, headers)
+    - Completeness (all tests, all requirements covered)
+  
+  Dependencies: TRACE-001
+  Acceptance Criteria:
+    ✓ 90%+ coverage
+    ✓ JSON valid and parseable
+    ✓ CSV proper formatting
+    ✓ Matrix is complete (no orphaned test cases)
+  
+  Estimated Effort: 2 hours
+  Priority: P1
+
+---
+
+COVERAGE-001: Implement Coverage Report Generator
+  Type: Implementation
+  Description:
+    Calculate coverage metrics: acceptance criteria, validation, [optional] API.
+    Report adapts based on whether OpenAPI was provided to the generator.
+  
+  Subtasks:
+    1.1 Create src/generators/coverage.py with:
+        - build_coverage_report(test_cases, requirements, [optional] api_spec, constraints) → CoverageReport
+        - calculate_acceptance_coverage(test_cases, requirements) → (percent, uncovered)
+        - calculate_validation_coverage(test_cases, constraints) → (percent, by_field)
+        - calculate_api_coverage([optional] test_cases, api_spec) → (percent, status_codes) or None
+        - validate_100_percent_coverage(report) → bool
+    1.2 Report structure (always included):
+        - acceptanceCriteriaCoverage: { total, covered, percent, uncovered: str[] }
+        - validationCoverage: { total_rules, covered_rules, percent, by_field: Dict }
+        - testCaseSummary: { total, by_intent: { positive, negative, boundary, validation, contract[optional] } }
+        - openApiIncluded: boolean flag
+    1.3 Report structure (conditional on OpenAPI):
+        - [IF OpenAPI provided] apiCoverage: { total_endpoints, covered_endpoints, percent, status_codes_covered: int[] }
+        - [IF OpenAPI absent] apiCoverage: null (omitted from report)
+    1.4 Success criteria:
+        - [ALWAYS] Must achieve 100% acceptance criteria coverage
+        - [ALWAYS] Must achieve 100% validation coverage (if validation rules provided)
+        - [CONDITIONAL] Must achieve 100% API coverage (only validated if OpenAPI provided)
+  
+  Dependencies: CORE-001, DESIGN-001
+  Acceptance Criteria:
+    ✓ [ALWAYS] Calculates correct acceptance criteria percentages (100.0 for full coverage)
+    ✓ [ALWAYS] Calculates correct validation percentages (100.0 for full coverage)
+    ✓ [ALWAYS] Lists uncovered requirements
+    ✓ [ALWAYS] Breaks down validation by field
+    ✓ [CONDITIONAL] Calculates API coverage correctly (if OpenAPI provided)
+    ✓ [CONDITIONAL] Reports status codes covered (if OpenAPI provided)
+    ✓ [CONDITIONAL] Sets openApiIncluded=true when API spec exists
+    ✓ [CONDITIONAL] Sets openApiIncluded=false when API spec is None (omits apiCoverage)
+    ✓ [ALWAYS] Total test count and intent breakdown accurate
+    ✓ Success criteria validation: 100% of applicable metrics (based on openApiIncluded)
+  
+  Estimated Effort: 3 hours
+  Priority: P0
+  
+  Estimated Effort: 3 hours
+  Priority: P0
+
+---
+
+COVERAGE-002: Write Coverage Report Generator unit tests
+  Type: Test
+  Description:
+    Unit tests for coverage calculations.
+  
+  Test Coverage:
+    - Acceptance criteria coverage
+    - Validation coverage
+    - API coverage
+    - Edge cases (0 requirements, 100% coverage, partial coverage)
+  
+  Dependencies: COVERAGE-001
+  Acceptance Criteria:
+    ✓ 90%+ coverage
+    ✓ Metrics calculated correctly
+    ✓ Uncovered items listed accurately
+    ✓ 100% coverage validated correctly
+  
+  Estimated Effort: 2 hours
+  Priority: P1
+
+---
+
+COVERAGE-003: Implement gaps report generation
+  Type: Implementation
+  Description:
+    Identify and report missing/ambiguous requirements.
+  
+  Subtasks:
+    3.1 Create src/generators/gaps.py (or part of coverage.py) with:
+        - build_gaps_report(requirements, api_spec, constraints) → GapsReport
+        - detect_ambiguous_language(text) → bool (flags "may", "should", "order to")
+        - detect_missing_fields(schema, examples) → str[] (fields without examples)
+        - detect_incomplete_api(endpoints) → str[] (missing schemas, examples)
+    3.2 Report includes:
+        - missingAcceptanceCriteria (if no AC sections found)
+        - ambiguousBusinessRules (flagged with language keywords)
+        - undefinedValidations (if no validation rules provided)
+        - incompleteApiContracts (endpoints missing request/response schemas)
+  
+  Dependencies: CORE-001, DESIGN-001
+  Acceptance Criteria:
+    ✓ Detects ambiguous language in requirements
+    ✓ Flags missing AC sections
+    ✓ Flags missing validation rules
+    ✓ Flags incomplete API specs
+    ✓ Report is JSON and human-readable
+  
+  Estimated Effort: 2 hours
+  Priority: P1
+
+---
+
+ASSEMBLE-001: Wire up end-to-end flow in run_generation.py
+  Type: Implementation
+  Description:
+    Update run_generation.py to orchestrate all components.
+    Load config → conditionally parse inputs → generate tests → render output → validate.
+  
+  Subtasks:
+    1.1 Update run_generation.py to:
+        1. Load config.yaml
+        2. Parse REQUIRED inputs (requirements from markdown)
+        3. [CONDITIONAL] Parse optional inputs (OpenAPI spec if openapi_path provided)
+        4. [CONDITIONAL] Parse optional validation rules (if validation_rules_path provided)
+        5. Generate test cases (passes None for api_spec if not provided)
+        6. Generate mock data
+        7. Render Gherkin, Playwright
+        8. Build traceability matrix, coverage report (adapted for optional API), gaps report
+        9. Generate manifest (includes openApiIncluded flag)
+        10. Validate 100% coverage of applicable metrics (skip API coverage if openapi_path missing)
+        11. Write all artifacts to output/<timestamp>/
+    1.2 Error handling:
+        - Missing markdown file → ERROR (fail fast)
+        - Missing OpenAPI file → LOG WARNING, set api_spec=None, continue
+        - Missing validation rules → LOG WARNING, set constraints=[], continue
+        - Parse errors → log as gaps, continue
+        - Invalid output → raise error
+    1.3 Conditional logic:
+        - Check config.openapi_path existence and readability
+        - Skip API-related parsing/generation if not provided
+        - Adapt coverage validation based on what was provided
+    1.4 Logging:
+        - Progress messages (parsing, generating, rendering)
+        - Flag when optional inputs are skipped: "OpenAPI not provided; skipping API contract tests"
+        - Summary statistics (test count, coverage % for each metric)
+        - Execution time
+  
+  Dependencies: All previous components (CORE-*, REQ-*, API-* [optional], DESIGN-*, DATA-*,
+                GHERKIN-*, PLAYWRIGHT-*, TRACE-*, COVERAGE-*)
+  Acceptance Criteria:
+    ✓ End-to-end execution without errors
+    ✓ All required artifacts generated (gherkin/, playwright/, *.json files)
+    ✓ Output structure matches plan
+    ✓ Manifest includes openApiIncluded flag and all required fields
+    ✓ Log messages are clear and helpful (especially when skipping optional components)
+    ✓ Execution time < 5 seconds
+    ✓ [WITH OpenAPI] Generates API contract tests and API coverage metrics
+    ✓ [WITHOUT OpenAPI] Generates functional/validation/boundary tests only; coverage report omits API metrics
+    ✓ Coverage validation succeeds (100% of applicable metrics)
+  
+  Estimated Effort: 3 hours
+  Priority: P0
+
+---
+
+ASSEMBLE-002: End-to-end integration tests
+  Type: Integration Test
+  Description:
+    Full flow tests: specification → artifacts.
+    Test both WITH and WITHOUT OpenAPI to verify conditional behavior.
+  
+  Test Scenarios:
+    [SCENARIO 1 - WITH OpenAPI]
+    - Full flow: markdown + OpenAPI + validation rules → all outputs
+    - Includes: Functional, Validation, Boundary, Contract tests
+    - Coverage: 100% acceptance, validation, API coverage
+    - Manifest: openApiIncluded=true, apiCoverage populated
+    
+    [SCENARIO 2 - WITHOUT OpenAPI]
+    - Partial flow: markdown + validation rules (no OpenAPI) → outputs without API tests
+    - Includes: Functional, Validation, Boundary tests (no Contract)
+    - Coverage: 100% acceptance, validation (API coverage skipped)
+    - Manifest: openApiIncluded=false, apiCoverage null/omitted
+    
+    [SCENARIO 3 - MINIMAL]
+    - Minimal flow: markdown only (no OpenAPI, no validation rules)
+    - Includes: Functional, Validation tests (from AC constraints)
+    - Coverage: 100% acceptance, (validation from AC-derived constraints)
+    - Manifest: openApiIncluded=false
+    
+    [ALL SCENARIOS]
+    - Determinism: run twice, compare checksums (manifest)
+    - Traceability: every test → at least 1 requirement
+    - Anti-hallucination: no invented fields/endpoints
+  
+  Test Fixtures:
+    - tests/fixtures/sample_spec/ (markdown, OpenAPI, validation rules)
+    - tests/fixtures/sample_spec_minimal/ (markdown only)
+    - tests/fixtures/expected_output/ (reference outputs for each scenario)
+  
+  Dependencies: ASSEMBLE-001
+  Acceptance Criteria:
+    ✓ [WITH OpenAPI] Full flow completes with all outputs and API tests
+    ✓ [WITHOUT OpenAPI] Flow completes gracefully, skipping API tests and coverage
+    ✓ [MINIMAL] Flow completes with markdown only
+    ✓ All output artifacts generated and valid (for their scenario)
+    ✓ Deterministic (run twice → identical checksums)
+    ✓ 100% coverage (for applicable metrics in each scenario)
+    ✓ Traceability complete
+    ✓ No hallucinated content (especially no invented API endpoints when OpenAPI missing)
+    ✓ Manifest validates for each scenario (openApiIncluded flag matches reality)
+    ✓ Coverage report includes/omits apiCoverage based on scenario
+  
+  Estimated Effort: 4 hours
+  Priority: P0
+
+---
+
+ASSEMBLE-003: Documentation & examples
+  Type: Documentation
+  Description:
+    Update README.md, add comments, create example outputs.
+  
+  Subtasks:
+    3.1 Update README.md:
+        - Installation (Python 3.9+, no external deps)
+        - Quick start (run_generation.py)
+        - Input/output format description
+        - Configuration (config.yaml)
+        - Example artifacts
+    3.2 Code comments:
+        - Docstrings for all modules and classes
+        - Inline comments for complex logic
+        - Type hints on all functions
+    3.3 Example outputs:
+        - Store sample output in docs/examples/
+        - Show expected directory structure
+  
+  Dependencies: All components
+  Acceptance Criteria:
+    ✓ README is complete and clear
+    ✓ All modules have docstrings
+    ✓ Example outputs provided
+    ✓ Type hints on all functions
+  
+  Estimated Effort: 2 hours
+  Priority: P2
+
+---
+
+==============================================================================
+SUMMARY & DEPENDENCIES
+==============================================================================
+
+Critical Path (blockers - REQUIRED):
+  Week 1: CORE-001 → CORE-002 → CORE-003 → CORE-004 → CORE-005 → CORE-006
+  Week 2: REQ-001 → REQ-005 (markdown parsing is REQUIRED)
+  Week 3: DESIGN-001 → DATA-001 (with api_spec=None if OpenAPI not provided)
+  Week 4: GHERKIN-001 + PLAYWRIGHT-001 (parallel), TRACE-001, COVERAGE-001,
+          ASSEMBLE-001, ASSEMBLE-002
+
+Optional Track (can be added/skipped):
+  Week 2: API-001 → API-004 (OpenAPI parsing; graceful skip if not needed)
+  Note: If API track skipped, system still works (generates non-API tests)
+
+Parallel tracks (can overlap):
+  - Required parsers (REQ-*) can be built in parallel with core
+  - [OPTIONAL] API parsers (API-*) can overlap with required parsers
+  - Gherkin + Playwright adapters can be built in parallel
+  - Unit tests can be written as soon as code is ready (not blocking)
+
+MVP Rule Compliance:
+  ✓ System works with ONLY markdown (no OpenAPI required)
+  ✓ If OpenAPI provided → API Contract tests generated
+  ✓ If OpenAPI absent → API tests skipped, other tests generated normally
+  ✓ Functional, Validation, Boundary tests ALWAYS generated
+  ✓ Gherkin, Playwright, Traceability, Coverage ALWAYS generated
+  ✓ Manifest flags openApiIncluded for transparency
+
+Estimated Total Effort:
+
+  REQUIRED TRACK:
+  - Core infrastructure: 14 hours
+  - Required parsers: 11 hours (REQ-001 to REQ-005)
+  - Generators: 20 hours
+  - Adapters: 13 hours
+  - Assembly & E2E tests: 11 hours
+  - Documentation & polish: 2 hours
+  Subtotal (REQUIRED): ~71 hours
+
+  OPTIONAL TRACK (if OpenAPI used):
+  - Optional parsers: 7 hours (API-001, API-002, API-004)
+  - Total with OpenAPI: ~78 hours
+
+  Total: ~71-78 hours (~18-20 days @ 4 hours/day, or ~9-10 days @ 8 hours/day)
+
+Success Criteria:
+  ✓ Phase 1 MVP complete and working end-to-end
+  ✓ Works with User Stories + Acceptance Criteria only (OpenAPI optional)
+  ✓ All REQUIRED components have > 90% unit test coverage
+  ✓ Deterministic output verified (run twice → identical checksums)
+  ✓ 100% acceptance criteria coverage [ALWAYS]
+  ✓ 100% validation coverage [ALWAYS]
+  ✓ 100% API coverage [CONDITIONAL on OpenAPI provided]
+  ✓ All artifacts valid (Gherkin syntax, TypeScript compilation, JSON parse)
+  ✓ Anti-hallucination verified (no invented fields/endpoints/constraints)
+  ✓ Documentation complete
+  ✓ Integration tests verify both WITH and WITHOUT OpenAPI scenarios
+
+Ready to start Week 1? Confirm and we'll begin with CORE-001.
+
+*** End of speckit.tasks

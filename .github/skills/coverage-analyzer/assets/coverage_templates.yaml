@@ -1,0 +1,50 @@
+templates:
+  coverage_report:
+    acceptance_criteria_coverage:
+      description: "Coverage for acceptance criteria."
+      type: object
+      properties:
+        total:
+          type: integer
+        covered:
+          type: integer
+        percentage:
+          type: number
+    validation_coverage:
+      description: "Coverage for validation rules."
+      type: object
+      properties:
+        total:
+          type: integer
+        covered:
+          type: integer
+        percentage:
+          type: number
+    api_coverage:
+      description: "Coverage for API contracts and endpoints."
+      type: object
+      properties:
+        total:
+          type: integer
+        covered:
+          type: integer
+        percentage:
+          type: number
+    gaps_report:
+      description: "Coverage gaps and uncovered items."
+      type: object
+      properties:
+        uncovered_requirements:
+          type: array
+          items:
+            type: string
+        uncovered_validations:
+          type: array
+          items:
+            type: string
+        uncovered_api_contracts:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string

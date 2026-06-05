@@ -1,0 +1,46 @@
+{
+  "test_cases": [
+    {
+      "id": "TC-001",
+      "title": "Save payment card successfully",
+      "type": "positive",
+      "endpoint": "/payments",
+      "method": "post",
+      "expected_status": "201",
+      "fixture_id": "FX-001",
+      "traceability_links": [
+        {"type": "requirement", "id": "REQ-001"}
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "FX-001",
+      "payload": {
+        "amount": 100.00,
+        "currency": "USD"
+      }
+    }
+  ],
+  "api_contracts": [
+    {
+      "endpoint": "/payments",
+      "method": "post",
+      "request_schema": {
+        "type": "object",
+        "required": ["amount", "currency"],
+        "properties": {
+          "amount": {"type": "number"},
+          "currency": {"type": "string"}
+        }
+      },
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"type": "string"}
+        }
+      }
+    }
+  ]
+}

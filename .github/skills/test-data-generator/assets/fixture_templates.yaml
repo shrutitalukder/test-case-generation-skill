@@ -1,0 +1,78 @@
+templates:
+  fixture_model:
+    positive_fixtures:
+      description: "Valid fixtures generated for positive test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          test_case_id:
+            type: string
+          payload:
+            type: object
+          description:
+            type: string
+    negative_fixtures:
+      description: "Invalid fixtures generated for negative test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          test_case_id:
+            type: string
+          payload:
+            type: object
+          invalid_reason:
+            type: string
+    boundary_fixtures:
+      description: "Fixtures for boundary test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          test_case_id:
+            type: string
+          payload:
+            type: object
+          boundary_condition:
+            type: string
+    api_payload_examples:
+      description: "API request and response payload examples generated from schemas."
+      type: object
+      properties:
+        requests:
+          type: array
+          items:
+            type: object
+            properties:
+              endpoint:
+                type: string
+              method:
+                type: string
+              payload:
+                type: object
+        responses:
+          type: array
+          items:
+            type: object
+            properties:
+              endpoint:
+                type: string
+              method:
+                type: string
+              payload:
+                type: object
+    gaps_report:
+      description: "Report for missing constraints or incomplete schema information."
+      type: object
+      properties:
+        missing_constraints:
+          type: array
+          items:
+            type: string
+        incomplete_schemas:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string

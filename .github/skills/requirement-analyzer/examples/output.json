@@ -1,0 +1,46 @@
+{
+  "requirement_model": {
+    "actors": [
+      "registered shopper"
+    ],
+    "requirements": [
+      {
+        "id": "REQ-001",
+        "text": "Given I am logged in, when I enter a valid card and save it, then the card is stored securely.",
+        "type": "acceptance_criteria"
+      },
+      {
+        "id": "REQ-002",
+        "text": "Given I have no saved payment methods, when I attempt to checkout, then I am prompted to add a payment card.",
+        "type": "acceptance_criteria"
+      },
+      {
+        "id": "REQ-003",
+        "text": "The saved card must expire after 3 years and require CVV entry for verification.",
+        "type": "acceptance_criteria"
+      }
+    ],
+    "business_rules": [
+      "Payment card data must be encrypted at rest.",
+      "The saved card must expire after 3 years.",
+      "Card verification must require CVV entry."
+    ],
+    "preconditions": [
+      "User is logged in.",
+      "User has no saved payment methods."
+    ],
+    "postconditions": [
+      "Payment card is stored securely.",
+      "User is prompted to add a payment card when no saved payment methods exist."
+    ],
+    "validation_rules": [
+      "Card expiration validation is required.",
+      "Payment card data encryption at rest is required."
+    ],
+    "normalized_requirement_ids": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003"
+    ]
+  }
+}

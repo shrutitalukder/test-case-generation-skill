@@ -1,0 +1,53 @@
+templates:
+  requirement_model:
+    actors:
+      description: "List of actors detected in the user story."
+      type: array
+      items:
+        type: string
+    acceptance_criteria:
+      description: "Accepted criteria items extracted from requirements text."
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+          text:
+            type: string
+          type:
+            type: string
+    business_rules:
+      description: "Business rules inferred from explicit requirement language."
+      type: array
+      items:
+        type: string
+    preconditions:
+      description: "Preconditions required before a scenario or feature can run."
+      type: array
+      items:
+        type: string
+    postconditions:
+      description: "Postconditions resulting from executing the requirement."
+      type: array
+      items:
+        type: string
+    validation_rules:
+      description: "Validation-related constraints extracted from requirements."
+      type: array
+      items:
+        type: string
+    normalized_requirement_ids:
+      description: "Deterministic requirement identifiers generated for extracted items."
+      type: array
+      items:
+        type: string
+  gap_report:
+    missing_acceptance_criteria:
+      type: boolean
+    ambiguous_requirements:
+      type: array
+      items:
+        type: string
+    notes:
+      type: string

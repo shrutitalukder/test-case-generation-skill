@@ -1,0 +1,25 @@
+{
+  "coverage_report": {
+    "acceptance_criteria_coverage": {
+      "total": 2,
+      "covered": 1,
+      "percentage": 50.0
+    },
+    "validation_coverage": {
+      "total": 2,
+      "covered": 1,
+      "percentage": 50.0
+    },
+    "api_coverage": {
+      "total": 1,
+      "covered": 1,
+      "percentage": 100.0
+    }
+  },
+  "gaps_report": {
+    "uncovered_requirements": ["REQ-002"],
+    "uncovered_validations": ["VAL-002"],
+    "uncovered_api_contracts": [],
+    "notes": "Coverage inputs are complete but some items remain uncovered."
+  }
+}

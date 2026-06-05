@@ -1,0 +1,16 @@
+{
+  "requirements": [
+    {"id": "REQ-001", "text": "The system must allow saving payment cards."},
+    {"id": "REQ-002", "text": "The system must validate card expiration."}
+  ],
+  "validation_rules": [
+    {"id": "VAL-001", "text": "Payment card data must be encrypted at rest."},
+    {"id": "VAL-002", "text": "Expiration date must be valid."}
+  ],
+  "api_contracts": [
+    {"id": "API-001", "endpoint": "/payments", "method": "post"}
+  ],
+  "test_cases": [
+    {"id": "TC-001", "linked_requirements": ["REQ-001"], "linked_validations": ["VAL-001"], "linked_api_contracts": ["API-001"]}
+  ]
+}

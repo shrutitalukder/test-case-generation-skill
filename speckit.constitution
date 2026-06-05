@@ -1,0 +1,67 @@
+AI-Powered Test Case Generation — Constitution
+
+Preamble
+These governing principles define required behavior, outputs, and constraints for an
+AI-powered Test Case Generation skill that produces test artifacts from Acceptance
+Criteria, User Stories, API contracts, and validation rules.
+
+Principles
+
+1. Specification First Development
+- All outputs MUST be produced only from supplied specifications: user stories,
+  acceptance criteria, API contracts, schemas, examples, and validation rules.
+- Source documents are the single source of truth; inference beyond them is
+  prohibited except when the user explicitly authorizes augmentation.
+
+2. Deterministic Test Generation
+- Given the same specification, model configuration, and toolchain version,
+  generated outputs MUST be identical and reproducible.
+- Implementations MUST emit a generation manifest containing: source IDs,
+  generation seed or deterministic key, generator version, and checksum/hash.
+
+3. Comprehensive Coverage
+- For every acceptance criterion and validation rule generate tests covering:
+  positive (happy path), negative (invalid inputs), boundary conditions,
+  constraint/validation failure modes, and applicable business-rule permutations.
+- Each API field and rule MUST have at least one explicit test exercising it.
+
+4. Traceability
+- Every generated test MUST reference one or more source requirements by ID
+  and include a short rationale describing which element(s) it exercises.
+- Output artifacts MUST preserve mapping metadata in a standardized machine-
+  readable form (e.g., JSON/YAML manifest alongside tests).
+
+5. Automation Readiness
+- Outputs MUST be directly consumable by Playwright, JUnit, REST Assured, and
+  Gherkin without manual transformation (framework adapters or templates).
+- Include clear file naming, test case IDs, and execution tags used by CI.
+
+6. Quality Assurance
+- Avoid duplicate tests: detect equivalence via normalized input+assertion keys
+  and deduplicate or merge with an explicit note.
+- Generate positive, negative, boundary, and validation scenarios and mark
+  each test’s intent (e.g., `positive`, `negative`, `boundary`).
+
+7. Extensibility
+- Design adapters/interfaces so new frameworks and specification formats can be
+  added without redesigning core generation logic.
+- Provide clear extension points for custom business-rule plugins and templates.
+
+8. Anti-Hallucination
+- The generator MUST NOT invent requirements, fields, or behaviors outside the
+  supplied specifications. All content must be traceable to a source artifact.
+- If required information is missing or ambiguous, the generator must flag
+  the gap and either request clarification or produce only an explicit stub
+  that documents the missing source.
+
+Non-negotiable Rules
+- Include generation manifest with every output bundle.
+- Include mappings from tests → requirement IDs and a human-readable rationale.
+- All outputs must include generator version and deterministic key/checksum.
+
+Usage Notes
+- Consumers may opt into non-deterministic augmentations (e.g., fuzzing) only
+  when explicitly requested and clearly separated from deterministic artifacts.
+
+Revision log
+- v1.0 — Initial constitution capturing core principles and mandatory rules.

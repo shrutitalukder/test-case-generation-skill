@@ -1,0 +1,12 @@
+{
+  "user_story": "As a registered shopper, I want to save my payment card information so that I can checkout faster.",
+  "acceptance_criteria": [
+    "Given I am logged in, when I enter a valid card and save it, then the card is stored securely.",
+    "Given I have no saved payment methods, when I attempt to checkout, then I am prompted to add a payment card."
+  ],
+  "validation_rules": [
+    "Payment card data must be encrypted at rest.",
+    "Card expiration validation is required."
+  ],
+  "openapi_specification": null
+}

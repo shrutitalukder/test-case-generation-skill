@@ -1,0 +1,170 @@
+AI-Powered Test Case Generation — Specification
+
+Purpose
+The `speckit.specify` document defines the architecture, inputs, outputs, algorithms, templates,
+and conventions for an AI-powered Test Case Generation Skill that converts requirements
+(specifications, acceptance criteria, and API contracts) into automation-ready test artifacts.
+
+Scope
+- Convert: User Stories, Acceptance Criteria, OpenAPI/Swagger (optional), and Validation Rules
+  into structured test cases, fixtures, and automation skeletons.
+- Produce: deterministic, traceable, CI-ready artifacts for Playwright, JUnit,
+  REST Assured, and Gherkin.
+- Support functional workflows with or without API contracts:
+  ✓ With OpenAPI: generate Functional, Validation, Boundary, and API Contract tests.
+  ✓ Without OpenAPI: generate Functional, Validation, and Boundary tests (skip contracts).
+
+High-Level Steps
+1. Ingest sources: user stories, acceptance criteria, [optional] OpenAPI/Swagger, validation rules.
+2. Parse & extract: actors, business rules, preconditions, postconditions, validation constraints,
+   [optional] endpoints, request/response schemas, response codes, field constraints.
+3. Normalize: canonicalize requirement IDs, schema field names, and constraint expressions.
+4. Generate: test cases (positive, negative, boundary, validation, [optional] API contract), mock data,
+   payload examples, and test fixtures.
+5. Render: framework-specific skeletons using templates/adapters.
+6. Produce: traceability matrix, coverage report (with or without API coverage), and deterministic generation manifest.
+
+Inputs (accepted formats)
+- User Story: plain text or JSON with `id`, `title`, `description`, `acceptanceCriteria[]`. [REQUIRED]
+- Acceptance Criteria: Gherkin or atomic criteria list (ID + text + optional examples). [REQUIRED]
+- API Specs: OpenAPI 3.x (YAML/JSON), Swagger 2.0 (YAML/JSON). [OPTIONAL]
+  * If provided: generates API Contract tests and API coverage metrics.
+  * If omitted: system generates Functional/Validation/Boundary tests and skips API coverage.
+- Validation Rules: JSON Schema, custom YAML/CSV rules, or inline rules in acceptance criteria. [OPTIONAL]
+
+Parsing & Extraction
+- Requirements parser extracts:
+  - `actors[]` (who performs the action)
+  - `businessRules[]` (statements tagged as rules)
+  - `preconditions[]` / `postconditions[]`
+  - `constraints[]` (field-level: required, type, format, range, enum)
+- API parser extracts:
+  - `endpoints[]` with path, method
+  - `request.schema` and `response.schema` (dereferenced)
+  - `statusCodes[]` and associated schemas/examples
+  - `fieldConstraints[]` (min/max/regex/format/enum)
+
+Test Case Generation Rules
+- For each Acceptance Criterion produce at minimum:
+  - 1 `positive` (happy path)
+  - 1 `negative` (violates a validation or precondition)
+  - 1 `boundary` (edge of numeric/string length/range)
+- For each API field with constraints produce:
+  - one `validation` test per constraint (e.g., missing required, invalid type, pattern mismatch)
+  - [CONDITIONAL] If OpenAPI provided: one `contract` test per response code
+  - [IF NO OpenAPI] Validation tests still generated from acceptance criteria constraints
+- Deduplication: normalized key = hash(requirementID + normalized input + assertion)
+  - If collisions detected, merge intent and reference all related requirements.
+- Traceability: each test case includes `sourceIds[]` and `rationale` text.
+- Coverage Target:
+  - Always: 100% acceptance criteria coverage
+  - Always: 100% validation rule coverage (if rules provided)
+  - Conditional: 100% API coverage (only if OpenAPI provided)
+
+Identifiers & Naming
+- Requirement IDs: preserve provided ID or generate `REQ-<short-hash>`.
+- Test Case ID: `TC-<REQID>-<N>` (e.g., `TC-REQ-234-001`).
+- Automation files: `<REQID>-<TCID>-<framework>.<ext>`
+
+Determinism & Manifest
+- Deterministic seed derived from: HMAC_SHA256(generator_version + canonicalized_sources)
+- Each generation run must output `manifest.json` including:
+  - `generatorVersion`
+  - `timestamp`
+  - `deterministicSeed`
+  - `sourceFiles[]` (path, checksum)
+  - `testCases[]` (id, sourceIds, checksum)
+  - `artifacts[]` (path, type, checksum)
+- Consumers may request `non-deterministic` augmentations (fuzzed variants) only when
+  explicitly enabled; these are stored separately and labeled `augmentation`.
+
+Output Structure (example)
+- /output/<run-id>/manifest.json
+- /output/<run-id>/requirements/ (original canonicalized sources)
+- /output/<run-id>/tests/gherkin/*.feature
+- /output/<run-id>/tests/playwright/*.spec.ts
+- /output/<run-id>/tests/junit/*Test.java
+- /output/<run-id>/tests/rest-assured/*Test.java
+- /output/<run-id>/fixtures/*.json
+- /output/<run-id>/traceability/matrix.json (or .csv)
+- /output/<run-id>/coverage/report.json
+
+Traceability Matrix
+- Format: JSON and CSV
+- Row schema: {
+    requirementId, requirementText, testCaseId, testIntent, artifactPath, rationale
+  }
+
+Coverage Report
+- Metrics produced:
+  - `acceptanceCriteriaCoverage`: percent and list of uncovered criteria [ALWAYS]
+  - `validationCoverage`: percent per-field and overall [ALWAYS]
+  - `apiCoverage`: endpoints covered vs total, status codes covered [CONDITIONAL: only if OpenAPI provided]
+  - `totalTestCases` and `byIntent` breakdown (positive/negative/boundary/validation/contract[optional])
+  - `openApiIncluded`: boolean flag indicating whether API coverage is included in this report
+
+Mock Data & Fixtures
+- Mock generator uses constraint-driven approach honoring `type`, `format`, `min/max`, `enum`.
+- Deterministic PRNG seeded from `deterministicSeed` ensures repeatable mock values.
+- Fixtures include success and failure payloads and example headers/auth tokens where applicable.
+
+Automation Artifact Templates
+- Gherkin Scenario template:
+  - Scenario Title: `<REQID> - <short description>`
+  - Given/When/Then steps derived from preconditions, actions, and expected results.
+- Playwright skeleton (TypeScript):
+  - Test file exports a test that performs HTTP calls or UI actions, with TODOs for selectors.
+- JUnit skeleton (Java):
+  - Test classes annotated with `@Test`, with setup/teardown and placeholders for assertions.
+- REST Assured skeleton (Java):
+  - Endpoint-focused tests asserting status codes and response schema fragments.
+
+Template Parameters
+- All templates accept a `context` object: {
+    testCaseId, requirementId, description, intent, requestExample, expectedResponseExample,
+    mockFixturePath, tags[], rationale
+  }
+
+Anti-Hallucination & Missing Data Handling
+- NEVER invent fields, endpoints, or constraints not present in sources.
+- If OpenAPI is not provided:
+  - Do NOT attempt to infer API schemas or endpoints from acceptance criteria
+  - Skip API Contract test generation (flagged in manifest as `openApiIncluded: false`)
+  - Continue with Functional/Validation/Boundary test generation normally
+- If essential data is missing or ambiguous:
+  - Flag the test as `stub` and include `missingFields[]` in manifest
+  - Generate a `clarification_request.md` summarizing gaps and suggested questions
+  - Do not synthesize assertions beyond the specified acceptance criteria
+
+Adapters & Extensibility
+- Adapter interface (pseudo-definition):
+  - `parse(source)` -> canonical internal model
+  - `render(testCases[], template)` -> artifact files
+- Add new framework adapter by implementing `render` and supplying templates.
+- Add new spec parser by implementing `parse` for that format.
+
+CLI / API Example
+- CLI: `speckit-generate --input spec.yaml --out ./output --formats gherkin,playwright,junit`
+- HTTP API (POST /generate): body includes `sources[]`, `formats[]`, `options` (deterministic:true)
+
+Validation & Success Criteria Checks
+- After generation, run verification step:
+  - Confirm `acceptanceCriteriaCoverage == 100%` (otherwise list missing)
+  - Confirm `validationCoverage == 100%` for required fields
+  - Confirm `apiCoverage == 100%` for endpoints and status codes specified
+  - Confirm `manifest.deterministicSeed` exists and artifacts checksums match
+
+Developer Notes & Implementation Tips
+- Use canonicalization libraries for OpenAPI and JSON Schema (dereference $ref).
+- Use a strong canonicalization for sources (sorted keys, stable whitespace) before hashing.
+- Keep generator core pure and side-effect free; rendering adapters write files.
+- Provide unit tests for: parser correctness, determinism, deduplication, template rendering.
+
+Security & Privacy
+- Avoid logging sensitive example values (PII) in public manifests. Mask sensitive fields
+  and include clear notes in generated fixtures.
+
+Revision log
+- v1.0 — Initial specification covering parsing, generation rules, templates, and manifest.
+
+*** End of speckit.specify

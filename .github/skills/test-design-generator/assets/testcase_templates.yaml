@@ -1,0 +1,106 @@
+templates:
+  test_case_model:
+    positive_tests:
+      description: "Generated positive/happy-path test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+          title:
+            type: string
+          description:
+            type: string
+          linked_requirements:
+            type: array
+            items:
+              type: string
+          type:
+            type: string
+    negative_tests:
+      description: "Generated negative test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+          title:
+            type: string
+          description:
+            type: string
+          linked_validations:
+            type: array
+            items:
+              type: string
+          expected_result:
+            type: string
+    boundary_tests:
+      description: "Generated boundary test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+          title:
+            type: string
+          boundary_condition:
+            type: string
+          linked_constraints:
+            type: array
+            items:
+              type: string
+    validation_tests:
+      description: "Generated validation test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+          title:
+            type: string
+          validation_target:
+            type: string
+          linked_rules:
+            type: array
+            items:
+              type: string
+    contract_tests:
+      description: "Generated API contract test cases."
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+          title:
+            type: string
+          endpoint:
+            type: string
+          method:
+            type: string
+          linked_contracts:
+            type: array
+            items:
+              type: string
+          expected_status_codes:
+            type: array
+            items:
+              type: string
+    gaps_report:
+      description: "Report for missing validation or requirement coverage."
+      type: object
+      properties:
+        missing_validations:
+          type: array
+          items:
+            type: string
+        incomplete_requirements:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string

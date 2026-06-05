@@ -1,0 +1,36 @@
+templates:
+  traceability_matrix:
+    entries:
+      description: "Traceability mappings between requirements, tests, and artifacts."
+      type: array
+      items:
+        type: object
+        properties:
+          requirement_id:
+            type: string
+          test_case_id:
+            type: string
+          artifact_id:
+            type: string
+          artifact_type:
+            type: string
+          status:
+            type: string
+    gaps_report:
+      description: "Report for uncovered requirements, orphan tests, and missing links."
+      type: object
+      properties:
+        uncovered_requirements:
+          type: array
+          items:
+            type: string
+        orphan_tests:
+          type: array
+          items:
+            type: string
+        missing_links:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string

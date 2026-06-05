@@ -1,0 +1,22 @@
+{
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "text": "The system must allow a registered shopper to save a payment card securely."
+    }
+  ],
+  "test_cases": [
+    {
+      "id": "TC-001",
+      "title": "Save payment card successfully",
+      "linked_requirements": ["REQ-001"]
+    }
+  ],
+  "generated_artifacts": [
+    {
+      "id": "ART-001",
+      "type": "playwright_test",
+      "test_case_id": "TC-001"
+    }
+  ]
+}

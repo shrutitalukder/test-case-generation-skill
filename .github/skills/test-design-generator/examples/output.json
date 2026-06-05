@@ -1,0 +1,61 @@
+{
+  "positive_tests": [
+    {
+      "id": "TC-001",
+      "title": "Save payment card successfully",
+      "description": "Verify that a registered shopper can save a valid payment card and it is stored securely.",
+      "traceability_links": [
+        {"type": "requirement", "id": "REQ-001"}
+      ],
+      "type": "positive"
+    }
+  ],
+  "negative_tests": [
+    {
+      "id": "TC-002",
+      "title": "Reject invalid payment card data",
+      "description": "Verify that invalid payment card data is rejected and appropriate validation errors are returned.",
+      "traceability_links": [
+        {"type": "validation", "id": "VAL-001"}
+      ],
+      "expected_result": "Validation error is returned for invalid card data."
+    }
+  ],
+  "boundary_tests": [
+    {
+      "id": "TC-003",
+      "title": "Verify payment card expiration boundary",
+      "boundary_condition": "Card expires after 3 years.",
+      "traceability_links": [
+        {"type": "validation", "id": "VAL-002"}
+      ]
+    }
+  ],
+  "validation_tests": [
+    {
+      "id": "TC-004",
+      "title": "Validate required request fields",
+      "validation_target": "Request payload requires amount and currency.",
+      "traceability_links": [
+        {"type": "validation", "id": "VAL-001"}
+      ]
+    }
+  ],
+  "contract_tests": [
+    {
+      "id": "TC-005",
+      "title": "Create payment contract test",
+      "endpoint": "/payments",
+      "method": "post",
+      "traceability_links": [
+        {"type": "api_contract", "id": "API-001"}
+      ],
+      "expected_status_codes": ["201"]
+    }
+  ],
+  "gaps_report": {
+    "missing_validations": [],
+    "incomplete_requirements": [],
+    "notes": ""
+  }
+}

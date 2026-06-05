@@ -1,0 +1,58 @@
+{
+  "api_contracts": [
+    {
+      "path": "/payments",
+      "method": "post",
+      "operationId": null,
+      "summary": "Create a payment",
+      "request_schema": {
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          }
+        }
+      },
+      "response_schemas": {
+        "201": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "status_codes": [
+        "201"
+      ],
+      "field_constraints": [
+        "amount is a number",
+        "currency is a string"
+      ],
+      "required_fields": [
+        "amount",
+        "currency"
+      ]
+    }
+  ],
+  "validation_rules": [
+    "Request body is required for POST /payments."
+  ],
+  "gaps_report": {
+    "invalid_document": false,
+    "missing_schemas": [],
+    "incomplete_endpoints": [],
+    "notes": ""
+  }
+}

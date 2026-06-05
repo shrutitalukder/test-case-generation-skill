@@ -1,0 +1,59 @@
+{
+  "positive_fixtures": [
+    {
+      "test_case_id": "TC-001",
+      "payload": {
+        "amount": 100.00,
+        "currency": "USD"
+      },
+      "description": "Valid payment payload for creating a payment."
+    }
+  ],
+  "negative_fixtures": [
+    {
+      "test_case_id": "TC-002",
+      "payload": {
+        "amount": -1,
+        "currency": "USD"
+      },
+      "invalid_reason": "Amount must be a positive number."
+    }
+  ],
+  "boundary_fixtures": [
+    {
+      "test_case_id": "TC-003",
+      "payload": {
+        "amount": 0,
+        "currency": "USD"
+      },
+      "boundary_condition": "Minimum allowed amount boundary value."
+    }
+  ],
+  "api_payload_examples": {
+    "requests": [
+      {
+        "endpoint": "/payments",
+        "method": "post",
+        "payload": {
+          "amount": 100.00,
+          "currency": "USD"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "endpoint": "/payments",
+        "method": "post",
+        "payload": {
+          "id": "payment_123",
+          "status": "created"
+        }
+      }
+    ]
+  },
+  "gaps_report": {
+    "missing_constraints": [],
+    "incomplete_schemas": [],
+    "notes": ""
+  }
+}

@@ -1,0 +1,55 @@
+templates:
+  api_contracts:
+    endpoints:
+      description: "List of API endpoints extracted from the specification."
+      type: array
+      items:
+        type: object
+        properties:
+          path:
+            type: string
+          method:
+            type: string
+          operationId:
+            type: string
+            nullable: true
+          summary:
+            type: string
+            nullable: true
+          request_schema:
+            type: object
+          response_schemas:
+            type: object
+          status_codes:
+            type: array
+            items:
+              type: string
+          field_constraints:
+            type: array
+            items:
+              type: string
+          required_fields:
+            type: array
+            items:
+              type: string
+    validation_rules:
+      description: "Validation rules and constraints extracted from the API contract."
+      type: array
+      items:
+        type: string
+    gaps_report:
+      description: "Report for missing or incomplete API contract information."
+      type: object
+      properties:
+        invalid_document:
+          type: boolean
+        missing_schemas:
+          type: array
+          items:
+            type: string
+        incomplete_endpoints:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string

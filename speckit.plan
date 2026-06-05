@@ -1,0 +1,724 @@
+AI-Powered Test Case Generation Skill — Implementation Plan
+
+Version: 1.0
+Created: 2026-06-04
+Status: Draft (Phase 1 MVP)
+
+==============================================================================
+EXECUTIVE SUMMARY
+==============================================================================
+
+This plan defines the architecture, implementation phases, and roadmap for building
+an AI-powered Test Case Generation skill that converts requirements specifications
+into deterministic, traceable automation-ready test artifacts.
+
+The skill prioritizes:
+- Determinism: identical inputs → identical outputs
+- Modularity: framework adapters pluggable without core redesign
+- Traceability: every test maps back to source requirement
+- Anti-hallucination: no invented fields or endpoints
+- Extensibility: new frameworks and formats without architectural change
+
+==============================================================================
+DESIGN VISION
+==============================================================================
+
+Core Promise
+"From specification to automation in one deterministic pass, with full traceability
+and zero hallucinated requirements."
+
+Constraints
+- No external YAML or JSON libraries (Python 3.9+ std lib only, or minimal deps)
+- File-based Phase 1 (no HTTP API; no CLI framework overhead)
+- Pure Python core; rendering adapters handle framework-specific syntax
+- 100% deterministic output given same source + config + generator version
+
+Design Goals
+✓ Deterministic      — Reproducible outputs; strong canonicalization of sources
+✓ Modular            — Clean separation: parse → normalize → generate → render
+✓ Traceable          — Every test artifact maps to one or more requirement IDs
+✓ Framework Agnostic — Gherkin, Playwright, JUnit, REST Assured via adapters
+✓ Extensible         — Add new framework adapter without touching core generator
+✓ Anti-hallucination — Strict adherence to source specifications; gaps reported
+✓ Flexible Inputs    — Works with or without OpenAPI (skip API tests if no contract provided)
+✓ Testable           — Unit tests for each component; integration tests for flows
+
+==============================================================================
+PHASE 1: MVP COMPONENTS (Weeks 1–4)
+==============================================================================
+
+1. Requirement Analyzer
+   Input: Markdown user stories + acceptance criteria
+   Output: Canonicalized requirement model
+   
+   Responsibilities:
+   - Parse markdown for user story format (As a <actor>, I want <action>, so <benefit>)
+   - Extract acceptance criteria and map IDs (AC-NNN)
+   - Identify business rules, preconditions, postconditions
+   - Normalize requirement IDs (generate if missing)
+   - Detect and flag ambiguous language ("may", "should", "order to")
+   
+   Key Methods:
+   - parse_markdown_story(path) -> Story
+   - extract_acceptance_criteria(text) -> Requirement[]
+   - identify_business_rules(text) -> Rule[]
+   - canonicalize_requirement_id(text) -> str
+
+2. API Contract Analyzer [OPTIONAL COMPONENT]
+   Input: OpenAPI 3.x YAML/JSON (optional)
+   Output: Canonicalized API endpoint model
+   Activation: Conditional — runs only if OpenAPI spec file is provided in config
+   
+   Responsibilities (if enabled):
+   - Parse OpenAPI 3.x spec (dereference $ref)
+   - Extract endpoints, methods, request/response schemas
+   - Derive field constraints from JSON Schema (type, format, minLength, minimum, enum)
+   - Map status codes and response payloads
+   - Flag incomplete specs (missing request schema, response definitions)
+   
+   Behavior (if disabled):
+   - Skip this component entirely
+   - Do not invent API contracts from acceptance criteria
+   - Downstream generators skip API Contract test generation
+   - Coverage report excludes API metrics
+   
+   Key Methods:
+   - parse_openapi(path) -> ApiSpec (or None if disabled)
+   - extract_endpoints(spec) -> Endpoint[]
+   - extract_field_constraints(schema) -> Constraint[]
+   - normalize_status_code(code) -> int
+
+3. Test Design Generator
+   Input: Requirement[], [optional] ApiSpec, Constraint[]
+   Output: TestCase[]
+   
+   Responsibilities:
+   - For each acceptance criterion, generate:
+     ✓ 1 positive test (happy path, valid inputs)
+     ✓ 1 negative test (missing required, invalid type, constraint violation)
+     ✓ 1 boundary test (min/max edge values, empty strings)
+   - For each API field with constraint, generate validation test [IF OpenAPI provided]
+   - For each response code, generate contract test [IF OpenAPI provided]
+   - [IF NO OpenAPI] Still generate validation tests from acceptance criteria constraints
+   - Assign test IDs: TC-<REQ-ID>-<INTENT>
+   - Include traceability: sourceIds[], rationale
+   - Detect and skip duplicates (normalized key hash)
+   
+   Key Methods:
+   - generate_test_cases(requirements, [optional] api_spec, constraints) -> TestCase[]
+   - generate_positive_test(requirement, endpoint) -> TestCase
+   - generate_negative_test(requirement, constraint) -> TestCase
+   - generate_boundary_test(requirement, constraint) -> TestCase
+   - deduplicate_tests(test_cases) -> TestCase[]
+
+4. Test Data Generator
+   Input: ApiSpec, Constraint[], TestCase[]
+   Output: Payload[], Fixture[]
+   
+   Responsibilities:
+   - Generate constraint-driven mock data (respects type, format, min/max, enum)
+   - For positive tests: valid payloads matching all constraints
+   - For negative tests: invalid payloads violating one constraint at a time
+   - For boundary tests: edge values (min-1, max+1, empty string, etc.)
+   - Deterministic PRNG seeded from deterministicSeed
+   - Generate request/response examples and fixtures
+   
+   Key Methods:
+   - generate_mock_payload(schema, intent) -> Dict
+   - generate_mock_value(field_schema, constraint) -> Any
+   - generate_fixtures(test_cases) -> Fixture[]
+   - seed_prng(seed) -> Callable
+
+5. Gherkin Generator
+   Input: TestCase[], Requirement[]
+   Output: .feature files
+   
+   Responsibilities:
+   - Render Gherkin scenarios from test cases
+   - Template: Scenario ID + description
+   - Given/When/Then steps derived from preconditions, actions, expected results
+   - Include tags for intent (positive, negative, boundary, contract)
+   - Output: single .feature file or per-endpoint
+   
+   Key Methods:
+   - render_gherkin(test_cases, output_dir) -> None
+   - generate_scenario(test_case) -> str
+   - generate_given_steps(test_case) -> str[]
+   - generate_when_steps(test_case) -> str[]
+   - generate_then_steps(test_case) -> str[]
+
+6. Playwright Generator
+   Input: TestCase[], ApiSpec, Payload[]
+   Output: .spec.ts skeleton files
+   
+   Responsibilities:
+   - Render TypeScript Playwright test skeletons
+   - Import @playwright/test
+   - For each test case, generate test() block with:
+     ✓ setup (auth, base URL)
+     ✓ request construction (method, endpoint, headers, body)
+     ✓ HTTP call via request.* API
+     ✓ assertion placeholder for status + response schema
+     ✓ TODO comments for field-level assertions
+   - Deterministic file naming: TC-<ID>.spec.ts
+   - Include fixture references
+   
+   Key Methods:
+   - render_playwright(test_cases, output_dir) -> None
+   - generate_test_function(test_case) -> str
+   - generate_request_block(test_case) -> str
+   - generate_assertion_block(test_case) -> str
+   - generate_fixture_import(test_case) -> str
+
+7. Traceability Matrix Generator
+   Input: TestCase[], Requirement[], ApiSpec
+   Output: traceability_matrix.json, traceability_matrix.csv
+   
+   Responsibilities:
+   - Create mapping: requirementId → testCaseId → artifactPath
+   - Include rationale for each mapping
+   - Export as JSON (for tooling) and CSV (for humans)
+   - Row schema: requirementId, requirementText, testCaseId, testIntent,
+                 artifactPath, rationale
+   
+   Key Methods:
+   - build_traceability_matrix(test_cases, requirements) -> Matrix
+   - export_json(matrix, path) -> None
+   - export_csv(matrix, path) -> None
+
+8. Basic Coverage Report Generator
+   Input: TestCase[], Requirement[], [optional] ApiSpec, Constraint[], ValidationRule[]
+   Output: coverage_report.json
+   
+   Responsibilities:
+   - Calculate metrics:
+     ✓ acceptanceCriteriaCoverage: percent and list of uncovered criteria [ALWAYS]
+     ✓ validationCoverage: percent per-field, overall [ALWAYS]
+     ✓ apiCoverage: endpoints covered vs total; status codes covered [CONDITIONAL: if OpenAPI provided]
+     ✓ testCaseSummary: total count and breakdown by intent [ALWAYS]
+   - Flag any missing coverage (100% target for included metrics)
+   - Include `openApiIncluded` boolean flag in report
+   - Validate against success criteria (100% of applicable coverage)
+   
+   Key Methods:
+   - build_coverage_report(test_cases, requirements, [optional] api_spec) -> Report
+   - calculate_acceptance_coverage(test_cases, requirements) -> Percent
+   - calculate_validation_coverage(test_cases, constraints) -> Percent
+   - calculate_api_coverage(test_cases, api_spec) -> Percent
+   - validate_100_percent_coverage(report) -> bool
+
+==============================================================================
+PHASE 2: EXTENSIONS (Weeks 5–8)
+==============================================================================
+
+1. JUnit Generator
+   Input: TestCase[], ApiSpec, Payload[]
+   Output: *Test.java skeleton files
+   
+   Responsibilities:
+   - Render Java JUnit 5 test classes
+   - For each test case: @Test method with:
+     ✓ @BeforeEach setup (client, auth, base URL)
+     ✓ Payload construction
+     ✓ HTTP client call (HttpClient or RestTemplate)
+     ✓ Status code assertion
+     ✓ Response schema assertion (TODO)
+   - Fixtures as @ParameterizedTest source
+   
+   Key Methods:
+   - render_junit(test_cases, output_dir) -> None
+   - generate_test_class(test_case) -> str
+   - generate_test_method(test_case) -> str
+
+2. REST Assured Generator
+   Input: TestCase[], ApiSpec, Payload[]
+   Output: *Test.java skeleton files (REST Assured fluent API)
+   
+   Responsibilities:
+   - Render Java test classes using RestAssured DSL
+   - For each test case:
+     ✓ given() setup (headers, auth)
+     ✓ when() HTTP call (method, endpoint, body)
+     ✓ then() assertions (status, schema validation)
+   
+   Key Methods:
+   - render_rest_assured(test_cases, output_dir) -> None
+   - generate_rest_assured_test(test_case) -> str
+   - generate_rest_assured_assertions(test_case) -> str
+
+3. Advanced Coverage Analyzer
+   Input: TestCase[], Requirement[], ApiSpec
+   Output: advanced_coverage.json
+   
+   Responsibilities:
+   - Cross-correlation: requirement interactions, endpoint cascades
+   - Gap analysis: identify uncovered scenarios (e.g., auth failures, timeouts)
+   - Risk assessment: high-impact uncovered requirements
+   - Redundancy detection: test cases testing identical scenarios
+   
+   Key Methods:
+   - analyze_cross_coverage(test_cases, requirements) -> Analysis
+   - identify_gaps(requirements, test_cases) -> Gap[]
+   - assess_risk(gaps, requirement_priorities) -> RiskMap
+
+4. Regression Impact Analyzer
+   Input: TestCase[], Requirement[], new_Requirement[]
+   Output: impact_report.json
+   
+   Responsibilities:
+   - Compare old spec vs new spec
+   - Identify added, removed, modified requirements
+   - Flag test cases that may regress
+   - Recommend test case updates or deletions
+   
+   Key Methods:
+   - analyze_spec_diff(old_spec, new_spec) -> Diff
+   - impact_on_tests(diff, test_cases) -> ImpactMap
+   - recommend_updates(impact_map) -> Recommendation[]
+
+==============================================================================
+CORE DATA MODEL
+==============================================================================
+
+Requirement
+  id: str (AC-001, REQ-ABCD1234)
+  text: str
+  type: str (acceptance, business_rule, precondition, postcondition)
+  actor: str (extracted from "As a <actor>")
+  source: str (file path)
+  business_rules: str[]
+  preconditions: str[]
+  postconditions: str[]
+
+ApiSpec
+  source: str (file path)
+  title: str
+  version: str
+  endpoints: Endpoint[]
+
+Endpoint
+  path: str (/api/users)
+  method: str (GET, POST, PUT, PATCH, DELETE)
+  summary: str
+  description: str
+  request: RequestSchema
+  responses: Response[]
+
+RequestSchema
+  required: bool
+  schema: JsonSchema
+
+JsonSchema
+  type: str (object, array, string, integer, number, boolean)
+  format: str (email, date, uuid, etc.)
+  properties: Dict[str, JsonSchema]
+  required: str[]
+  minLength: int
+  maxLength: int
+  minimum: int
+  maximum: int
+  enum: Any[]
+  pattern: str (regex)
+
+Response
+  status: int (201, 400, 409)
+  description: str
+  schema: JsonSchema
+
+Constraint
+  field: str
+  type: str
+  rules: Dict[str, Any]  # { minLength, required, enum, pattern, ... }
+
+TestCase
+  id: str (TC-AC-001-POS)
+  sourceIds: str[] (AC-001, AC-002)
+  description: str
+  intent: str (positive, negative, boundary, validation, contract)
+  type: str (functional, validation, api, boundary)
+  request_example: Dict
+  expected_status: int
+  expected_response_schema: JsonSchema (optional)
+  rationale: str (why this test is important)
+  endpoint: Endpoint (optional)
+  tags: str[]
+
+Fixture
+  test_case_id: str
+  request_payload: Dict
+  expected_response: Dict (optional)
+  headers: Dict[str, str]
+  auth_token: str (optional, masked)
+
+TraceabilityRecord
+  requirement_id: str
+  requirement_text: str
+  test_case_id: str
+  test_intent: str
+  artifact_path: str
+  rationale: str
+
+CoverageReport
+  acceptance_criteria_coverage: { total, covered, percent, uncovered }
+  validation_coverage: { total_rules, covered_rules, percent, by_field }
+  api_coverage: { total_endpoints, covered_endpoints, percent, status_codes_covered }
+  test_case_summary: { total, by_intent: { positive, negative, boundary, contract, validation } }
+
+GenerationManifest
+  generator_version: str
+  generated_at: str (ISO 8601)
+  deterministic_seed: str (SHA256 of canonicalized sources)
+  sources: { path, checksum }[]
+  test_cases: { id, source_ids, checksum }[]
+  artifacts: { path, type, checksum }[]
+
+==============================================================================
+DIRECTORY STRUCTURE (Phase 1 MVP)
+==============================================================================
+
+test-case-gen-skill/
+├── speckit.constitution        # governing principles (non-negotiable)
+├── speckit.specify             # detailed architecture & templates
+├── speckit.plan                # this file: implementation roadmap
+│
+├── src/
+│   ├── __init__.py
+│   ├── speckit_generator.py    # main entry point
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── canonicalize.py     # SHA256-based determinism
+│   │   ├── model.py            # dataclasses for core types
+│   │   └── manifest.py         # manifest generation & validation
+│   │
+│   ├── parsers/
+│   │   ├── __init__.py
+│   │   ├── base.py             # abstract Parser
+│   │   ├── markdown.py         # RequirementAnalyzer
+│   │   ├── openapi.py          # ApiContractAnalyzer
+│   │   ├── validation.py       # ValidationRuleAnalyzer
+│   │   └── yaml_simple.py      # minimal YAML loader (no deps)
+│   │
+│   ├── generators/
+│   │   ├── __init__.py
+│   │   ├── base.py             # abstract Generator
+│   │   ├── test_design.py      # TestDesignGenerator
+│   │   ├── test_data.py        # TestDataGenerator
+│   │   ├── traceability.py     # TraceabilityMatrixGenerator
+│   │   └── coverage.py         # CoverageReportGenerator
+│   │
+│   ├── adapters/
+│   │   ├── __init__.py
+│   │   ├── base.py             # abstract Adapter
+│   │   ├── gherkin.py          # GherkinAdapter
+│   │   └── playwright.py       # PlaywrightAdapter
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       ├── hashing.py          # checksum, deterministic hashing
+│       ├── mock_data.py        # constraint-driven mock generation
+│       └── logger.py           # structured logging
+
+├── tests/
+│   ├── __init__.py
+│   ├── unit/
+│   │   ├── test_canonicalize.py
+│   │   ├── test_markdown_parser.py
+│   │   ├── test_openapi_parser.py
+│   │   ├── test_test_design_generator.py
+│   │   ├── test_test_data_generator.py
+│   │   ├── test_traceability.py
+│   │   └── test_coverage.py
+│   │
+│   ├── integration/
+│   │   ├── test_full_flow.py
+│   │   ├── test_determinism.py
+│   │   └── test_output_validation.py
+│   │
+│   └── fixtures/
+│       ├── sample_user_story.md
+│       ├── sample_openapi.yaml
+│       ├── sample_validation_rules.yaml
+│       └── expected_output/
+
+├── examples/
+│   ├── user-story.md
+│   ├── api-spec.yaml
+│   ├── validation-rules.yaml
+│   └── config.yaml
+
+├── output/                     # generated artifacts
+│   └── <timestamp>/
+│       ├── manifest.json
+│       ├── intermediate_model.json
+│       ├── coverage_report.json
+│       ├── gaps.json
+│       ├── traceability_matrix.json
+│       ├── traceability_matrix.csv
+│       ├── gherkin/
+│       │   └── generated_tests.feature
+│       └── playwright/
+│           └── *.spec.ts
+
+├── config.yaml                # input/output paths
+├── run_generation.py          # simple file-based runner
+├── requirements.txt           # (empty or minimal)
+└── README.md                  # usage instructions
+
+==============================================================================
+SKILL INTERACTION FLOW
+==============================================================================
+
+Phase 1: File-Based Generator
+
+User creates or edits:
+  ├─ examples/user-story.md
+  ├─ examples/api-spec.yaml
+  └─ examples/validation-rules.yaml
+
+User runs:
+  python run_generation.py
+
+Generator flow:
+  1. Load config.yaml
+  2. Parse inputs:
+     ├─ RequirementAnalyzer.parse(user-story.md) → Requirement[]
+     ├─ ApiContractAnalyzer.parse(api-spec.yaml) → ApiSpec
+     └─ ValidationRuleAnalyzer.parse(validation-rules.yaml) → Constraint[]
+  3. Normalize & validate:
+     ├─ Canonicalize requirement IDs
+     ├─ Dereference OpenAPI $ref
+     └─ Extract field constraints
+  4. Generate test cases:
+     └─ TestDesignGenerator.generate(requirements, api_spec, constraints) → TestCase[]
+  5. Generate test data:
+     └─ TestDataGenerator.generate(test_cases, constraints) → Fixture[]
+  6. Build traceability & coverage:
+     ├─ TraceabilityMatrixGenerator.build() → Matrix
+     └─ CoverageReportGenerator.build() → Report
+  7. Render output artifacts:
+     ├─ GherkinAdapter.render(test_cases) → .feature files
+     ├─ PlaywrightAdapter.render(test_cases) → .spec.ts files
+     └─ JsonExporter.render(manifest, matrix, report) → .json files
+  8. Write manifest & validate 100% coverage
+
+Output structure:
+  output/<timestamp>/
+  ├─ manifest.json              (deterministic seed, checksums)
+  ├─ intermediate_model.json    (parsed & normalized)
+  ├─ coverage_report.json       (acceptance, validation, API %)
+  ├─ gaps.json                  (missing/ambiguous requirements)
+  ├─ traceability_matrix.json   (test → requirement mapping)
+  ├─ gherkin/
+  │   └─ generated_tests.feature
+  └─ playwright/
+      └─ *.spec.ts
+
+Phase 2: Enhanced Workflows (Future)
+  - HTTP API for /generate endpoint
+  - CLI with --formats, --watch, --diff flags
+  - Gradle/Maven plugin integration
+  - VS Code extension for in-editor preview
+  - Git diff analysis (old spec → new spec impact)
+
+==============================================================================
+IMPLEMENTATION MILESTONES
+==============================================================================
+
+Week 1: Core Infrastructure
+  ☐ Setup project structure
+  ☐ Implement core data model (dataclasses)
+  ☐ Implement canonicalization & deterministic hashing
+  ☐ Implement simple YAML/JSON loader (no external deps)
+  ☐ Write unit tests for core utilities
+  Deliverable: core/ module passes all tests
+
+Week 2: Parsers
+  ☐ Implement RequirementAnalyzer (markdown parsing)
+  ☐ Implement ApiContractAnalyzer (OpenAPI 3.x parsing)
+  ☐ Implement ValidationRuleAnalyzer (YAML validation rules)
+  ☐ Write unit tests for each parser
+  ☐ Test against sample fixtures
+  Deliverable: parsers/ module with 100% unit test coverage
+
+Week 3: Generators (Core)
+  ☐ Implement TestDesignGenerator (positive/negative/boundary tests)
+  ☐ Implement TestDataGenerator (constraint-driven mocks)
+  ☐ Implement TraceabilityMatrixGenerator
+  ☐ Implement CoverageReportGenerator
+  ☐ Write integration tests
+  Deliverable: generators/ module; sample output with 100% coverage
+
+Week 4: Adapters & Assembly
+  ☐ Implement GherkinAdapter
+  ☐ Implement PlaywrightAdapter
+  ☐ Implement manifest generation & validation
+  ☐ Wire up run_generation.py to use all components
+  ☐ Write end-to-end integration tests
+  ☐ Test determinism (run twice, compare checksums)
+  Deliverable: Phase 1 MVP working end-to-end; all artifacts generated
+
+Week 5–8: Phase 2 Extensions (parallel tracks)
+  Track A: More Adapters
+    ☐ JUnit adapter
+    ☐ REST Assured adapter
+  Track B: Analysis
+    ☐ Advanced coverage analyzer
+    ☐ Regression impact analyzer
+  Track C: Polish
+    ☐ Comprehensive documentation
+    ☐ Performance optimization
+    ☐ Additional edge-case tests
+
+==============================================================================
+RISK ASSESSMENT
+==============================================================================
+
+Risk: OpenAPI spec contains unresolved $ref
+  Severity: High
+  Mitigation: Dereference $ref before schema extraction; flag unresolved refs in gaps.json
+  
+Risk: Acceptance criteria are ambiguous or incomplete
+  Severity: High
+  Mitigation: Flag ambiguous language; generate stubs; document in gaps.json
+  
+Risk: Generated test data violates business logic (semantic errors)
+  Severity: Medium
+  Mitigation: Constraint-driven mock generation reduces but doesn't eliminate risk;
+              include TODO comments in test skeletons for manual validation
+  
+Risk: Playwright/JUnit templates become outdated with framework versions
+  Severity: Medium
+  Mitigation: Version templates; provide upgrade path; document template changes
+  
+Risk: Generator becomes non-deterministic
+  Severity: Critical
+  Mitigation: Strong canonicalization; SHA256-based deterministic seed;
+              integration tests verify identical runs produce identical checksums
+  
+Risk: Hallucinated fields or endpoints
+  Severity: Critical
+  Mitigation: Anti-hallucination checks in generator; flag missing data;
+              strict adherence to specification; unit tests for boundary cases
+
+==============================================================================
+TESTING STRATEGY
+==============================================================================
+
+Unit Tests (Week 2–4)
+  ✓ Each parser: test against valid/invalid inputs, edge cases
+  ✓ Each generator: test with various requirement/constraint combinations
+  ✓ Canonicalization: verify deterministic output
+  ✓ Mock data: verify generated payloads match constraints
+  ✓ Adapters: verify generated code syntax is valid (static check)
+
+Integration Tests (Week 4)
+  ✓ Full flow: user story → acceptance criteria → test cases → Gherkin → artifact
+  ✓ Determinism: run twice, compare output checksums
+  ✓ Coverage validation: 100% acceptance, validation, API coverage
+  ✓ Traceability: every test maps to at least one requirement
+  ✓ Anti-hallucination: no invented fields or endpoints
+
+Regression Tests (Week 5+)
+  ✓ Sample fixtures (test files) locked; re-run generator; verify no regressions
+  ✓ Version compatibility: old specs still work with new generator
+  ✓ Performance: generator completes within SLA (e.g., < 5s for typical spec)
+
+Manual QA (Throughout)
+  ✓ Review generated Gherkin scenarios for readability
+  ✓ Review generated Playwright skeletons for compile errors
+  ✓ Verify Traceability matrix is complete and accurate
+  ✓ Verify Coverage report metrics are correct
+
+==============================================================================
+SUCCESS CRITERIA (Phase 1)
+==============================================================================
+
+Functional
+  ✓ 100% acceptance criteria coverage (or documented gaps)
+  ✓ 100% validation rule coverage (or documented gaps)
+  ✓ 100% API endpoint coverage (or documented gaps)
+  ✓ Deterministic output: identical inputs → identical outputs
+  ✓ Every test case traces back to at least one requirement
+  ✓ No hallucinated fields, endpoints, or constraints
+  ✓ Gherkin scenarios are syntactically valid
+  ✓ Playwright skeletons compile without errors
+
+Non-functional
+  ✓ Generation completes in < 5 seconds for typical spec (< 50 endpoints)
+  ✓ All critical code paths covered by unit tests (>90% coverage)
+  ✓ Manifest.json is valid JSON and includes all required fields
+  ✓ Documentation is complete and includes examples
+
+Governance
+  ✓ Constitution principles honored: specification-first, deterministic, traceable
+  ✓ All design goals met: modular, extensible, framework-agnostic
+  ✓ Code adheres to Python style (PEP 8)
+
+==============================================================================
+DEPENDENCIES & TECH STACK
+==============================================================================
+
+Phase 1: Minimal
+  - Python 3.9+
+  - Standard library only (json, re, hashlib, pathlib, dataclasses, etc.)
+  - No external packages
+
+Phase 2: Optional
+  - pytest (testing)
+  - black (formatting)
+  - mypy (type checking)
+  - sphinx (documentation)
+
+Generated Code:
+  - TypeScript (Playwright)
+  - Java (JUnit, REST Assured)
+  - Gherkin (feature files)
+
+==============================================================================
+DEPLOYMENT & DISTRIBUTION
+==============================================================================
+
+Phase 1: Local Development
+  - Single Python package in workspace
+  - Config file driven
+  - File-based I/O
+
+Phase 2: Distribution Candidates
+  - PyPI package (speckit-testgen)
+  - Docker image with CLI entrypoint
+  - GitHub Actions workflow template
+  - Maven Central archetype (for Java integration)
+
+==============================================================================
+FUTURE ENHANCEMENTS
+==============================================================================
+
+Short Term (Phase 2)
+  - GraphQL support (input & output)
+  - gRPC proto file parsing
+  - Kotlin/Scala test generation
+  - Regression diff analysis
+
+Medium Term (Phase 3)
+  - Machine learning for ambiguity detection
+  - Real-time feedback in VS Code
+  - Test execution integration (run generated tests)
+  - AI-powered test repair suggestions
+
+Long Term (Phase 4)
+  - Full test orchestration platform
+  - Cloud-based generation service
+  - Multi-language code generation
+  - End-to-end workflow automation
+
+==============================================================================
+REVISION LOG
+==============================================================================
+
+v1.0 — 2026-06-04
+  - Initial plan covering Phase 1 MVP and Phase 2 roadmap
+  - 8 core MVP components defined
+  - Data model, directory structure, milestones, and testing strategy
+  - Risk assessment and success criteria
+
+*** End of speckit.plan
